@@ -94,7 +94,8 @@
       id: safeId(b.id), title: str(b.title).slice(0, 80) || "كتاب", subject: str(b.subject).slice(0, 40),
       kind: b.kind === "link" ? "link" : "file", mime: str(b.mime).slice(0, 40), size: Math.max(0, num(b.size)),
       url: /^https:\/\//i.test(str(b.url)) ? str(b.url).slice(0, 2000) : "",
-      fileId: /^file_[A-Za-z0-9]+$/.test(str(b.fileId)) ? str(b.fileId) : "", added: dateOk(b.added) ? b.added : dateKey()
+      notes: b.notes && typeof b.notes === "object" ? Object.fromEntries(Object.entries(b.notes).slice(-6).map(([k, v]) => [str(k).slice(0, 80), str(v).slice(0, 24000)])) : {},
+      fileId: "", added: dateOk(b.added) ? b.added : dateKey()
     }));
     if (!st.bookChats || typeof st.bookChats !== "object") st.bookChats = {};
     Object.keys(st.bookChats).forEach(k => {
@@ -1874,7 +1875,10 @@
 
   /* ---------- كتبي + المعلم الذكي ---------- */
   const aiBase = () => (typeof AI_CONFIG !== "undefined" && AI_CONFIG && AI_CONFIG.proxyUrl ? String(AI_CONFIG.proxyUrl).replace(/\/+$/, "") : "");
-  const MAX_AI_FILE = 20 * 1024 * 1024;
+  const MAX_AI_FILE = 14 * 1024 * 1024;
+  const AI_DAILY = 20; // أسئلة المعلم لكل طالب يومياً (توزيع الحصة المجانية بعدل)
+  const aiOn = () => !!(window.GeminiTutor && GeminiTutor.available());
+  const aiLimitedToday = () => !!(dayRec().aiLimit || dayRec().aiQ >= AI_DAILY);
   let studyTab = "books", openBookId = null, bookForm = false;
   let aiBusy = false, aiStatus = "", tutorLesson = "", tutorDeep = false;
 
@@ -1955,24 +1959,25 @@
       "</ul></section>" + aiInfoCard();
   }
   function aiInfoCard() {
-    return aiBase() ? "" : '<details class="card how"><summary>💜 كيف يعمل المعلم الذكي؟</summary><p class="small muted">' +
-      "افتح أي كتاب واضغط «افتح مع Claude»: نجهّز لك طلباً جاهزاً بصفّك ومادتك، وتُرفق الكتاب وتدرس معه مجاناً بحساب Google." +
-      (studentClass() <= 12 ? " حساب Claude للبالغين (18+)، فاستخدمه مع أحد والديك وبحسابه." : "") +
+    return aiOn() ? "" : '<details class="card how"><summary>🤖 أين المعلم الذكي؟</summary><p class="small muted">' +
+      "المعلم الذكي (Gemini من Google) سيكون متاحاً قريباً. الآن يمكنك حفظ كتبك وقراءتها، وصنع بطاقاتك بنفسك." +
       "</p></details>";
   }
 
   function viewBook(b) {
     const chat = S.bookChats[b.id] || [];
     const online = navigator.onLine !== false;
-    const ai = aiBase();
+    const ai = aiOn();
     const big = b.kind === "file" && b.size > MAX_AI_FILE;
     const head = '<section class="card"><button class="linkbtn back-link" data-action="closeBook">→ كل الكتب</button>' +
       '<div class="row"><span class="book-ic big" aria-hidden="true">' + bookIcon(b) + '</span><div class="grow"><h2 dir="auto" style="margin:0">' + esc(b.title) + "</h2>" +
-      '<div class="meta">' + esc(b.subject) + (b.size ? " · " + fmtSize(b.size) : "") + (b.fileId ? " · جاهز للمعلم ✔" : "") + "</div></div></div>" +
+      '<div class="meta">' + esc(b.subject) + (b.size ? " · " + fmtSize(b.size) : "") + (b.notes && Object.keys(b.notes).length ? " · جاهز للمعلم ✔" : "") + "</div></div></div>" +
       '<div class="grid-2" style="margin-top:12px"><button class="btn ghost" data-action="openBookFile">📖 افتح الكتاب</button>' +
       '<button class="btn outline" data-action="delBook">🗑️ حذف</button></div></section>';
     let tutor = '<section class="card tutor"><h3>🤖 المعلم الذكي</h3>';
-    if (ai && !big) {
+    if (ai && !big && aiLimitedToday()) {
+      tutor += aiRestCard();
+    } else if (ai && !big) {
       tutor +=
         '<label for="tutorLesson">الدرس أو الصفحات <span class="muted">(اختياري)</span></label>' +
         '<input type="text" id="tutorLesson" maxlength="80" placeholder="مثلاً: درس الكسور، أو صفحات 20–25" value="' + esc(tutorLesson) + '">' +
@@ -1990,13 +1995,14 @@
         '<button type="button" class="switch-row" data-action="aiDeep" role="switch" aria-checked="' + tutorDeep + '"><span class="grow"><b>🧠 شرح أعمق</b><span class="small muted">أبطأ قليلاً — للدروس الصعبة</span></span><span class="switch" aria-hidden="true"></span></button>' +
         (chat.length ? '<button class="linkbtn" data-action="aiClear">🧹 محادثة جديدة</button>' : "") +
         (!online ? '<p class="small care-note">📶 المعلم الذكي يحتاج إنترنت. الكتاب نفسه متاح لك دائماً.</p>' : "") +
-        '<p class="small muted">يُرسَل الكتاب للمعلم الذكي (Claude) لشرحه لك فقط.</p>';
+        '<p class="small muted">يُرسَل الدرس إلى Gemini من Google ليشرحه لك فقط · باقي لك اليوم ' + Math.max(0, AI_DAILY - (dayRec().aiQ || 0)) + " سؤالاً" +
+        (b.notes && b.notes[lessonKey()] ? " · ✔ الدرس محفوظ على جهازك" : "") + ".</p>";
     } else if (big) {
-      tutor += '<p class="small muted">الملف أكبر من 20 ميغابايت. لتستخدم المعلم داخل التطبيق: ارفع فصلاً واحداً أو صوّر صفحات الدرس. أو استخدم Claude مباشرة:</p>';
+      tutor += '<p class="small muted">الملف أكبر من 14 ميغابايت. ليشرحه المعلم الذكي: أضف فصلاً واحداً أو صوّر صفحات الدرس 📷.</p>';
     } else {
-      tutor += claudeLimitedToday() ? claudeRestCard() : claudeSteps();
+      tutor += '<p class="small muted">المعلم الذكي غير مفعّل بعد. يمكنك الآن قراءة كتابك وصنع بطاقاتك بنفسك 🗂️.</p>';
     }
-    tutor += (claudeLimitedToday() && !(ai && !big) ? "" : '<button class="btn ' + (ai && !big ? "outline" : "") + ' block" data-action="openClaude">💜 افتح مع Claude' + (studentClass() <= 12 ? " (مع أحد والديك)" : " (مجاني)") + "</button>") + "</section>";
+    tutor += "</section>";
     return head + tutor;
   }
 
@@ -2011,18 +2017,10 @@
 
   async function aiFetch(path, payload) {
     if (navigator.onLine === false) throw { code: "offline" };
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 120000);
-    let res;
-    try {
-      res = await fetch(aiBase() + path, Object.assign({ method: "POST", signal: ctrl.signal }, payload instanceof FormData ?
-        { headers: { "X-Device-Id": deviceId() }, body: payload } :
-        { headers: { "Content-Type": "application/json", "X-Device-Id": deviceId() }, body: JSON.stringify(payload) }));
-    } catch (e) { throw { code: e && e.name === "AbortError" ? "timeout" : "network" }; }
-    finally { clearTimeout(timer); }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw { code: data.error || "http", status: res.status, limit: data.limit };
-    return data;
+    if (!aiOn()) throw { code: "server_not_configured" };
+    if (path === "/chat") return GeminiTutor.chat(payload);
+    if (path === "/cards") return GeminiTutor.cards(payload);
+    throw { code: "upstream" };
   }
   function aiErrorText(e) {
     const c = (e && e.code) || "";
@@ -2034,47 +2032,60 @@
       busy: "المعلم مشغول الآن. حاول بعد دقيقة.",
       too_large: "الملف كبير جداً للمعلم. ارفع فصلاً واحداً أو صوّر صفحات الدرس.",
       missing: "لم نجد ملف الكتاب على جهازك. احذفه وأضفه من جديد.",
-      server_not_configured: "المعلم الذكي غير جاهز بعد. استخدم «افتح مع Claude» حالياً.",
-      origin_not_allowed: "المعلم الذكي غير جاهز بعد. استخدم «افتح مع Claude» حالياً."
+      server_not_configured: "المعلم الذكي غير جاهز بعد على هذا الجهاز.",
+      origin_not_allowed: "المعلم الذكي غير جاهز بعد على هذا الجهاز.",
+      url_fetch_failed: "لم نستطع تحميل الكتاب من الرابط. نزّله على جهازك ثم أضفه كملف 📄",
+      bad_file: "لم يستطع المعلم قراءة هذا الملف. جرّب صورة واضحة للصفحة 📷",
+      bad_type: "نوع الملف غير مدعوم. استخدم PDF أو صورة."
     })[c] || "حدث خطأ. حاول مرة أخرى.";
   }
-  async function ensureUploaded(b, force) {
-    if (b.kind !== "file" || (b.fileId && !force)) return;
-    const blob = await idbGet(b.id).catch(() => null);
-    if (!blob) throw { code: "missing" };
-    if (blob.size > MAX_AI_FILE) throw { code: "too_large" };
-    aiStatus = "نرفع الكتاب للمعلم (مرة واحدة فقط)";
+  /* نص الدرس يُستخرج من الكتاب مرة واحدة ويُحفظ على الهاتف — بعدها الأسئلة نص خفيف فقط */
+  const lessonKey = () => (tutorLesson.trim() || "_first").slice(0, 80);
+  async function ensureNotes(b, force) {
+    const k = lessonKey();
+    b.notes = b.notes && typeof b.notes === "object" ? b.notes : {};
+    if (b.notes[k] && !force) return b.notes[k];
+    aiStatus = "المعلم يقرأ الدرس من كتابك (مرة واحدة فقط)";
     render();
-    const fd = new FormData();
-    const ext = (b.mime.split("/")[1] || "pdf").replace("jpeg", "jpg");
-    fd.append("file", blob, "book." + ext);
-    const r = await aiFetch("/upload", fd);
-    b.fileId = r.fileId;
+    let blob, mime;
+    if (b.kind === "link") {
+      const res = await fetch(b.url).catch(() => null);
+      if (!res || !res.ok) throw { code: "url_fetch_failed" };
+      blob = await res.blob(); mime = (blob.type || "application/pdf").split(";")[0];
+    } else {
+      blob = await idbGet(b.id).catch(() => null);
+      if (!blob) throw { code: "missing" };
+      mime = b.mime || blob.type || "application/pdf";
+    }
+    const text = await GeminiTutor.extractLesson(blob, mime, tutorLesson.trim());
+    // نحتفظ بآخر 6 دروس لكل كتاب حتى لا يمتلئ التخزين
+    const keys = Object.keys(b.notes);
+    if (keys.length >= 6) delete b.notes[keys[0]];
+    b.notes[k] = text;
     save();
     aiStatus = "";
+    return text;
   }
   function bookPayload(b, extra) {
     return Object.assign({
-      fileId: b.kind === "file" ? b.fileId : undefined, url: b.kind === "link" ? b.url : undefined, mime: b.mime,
+      notes: (b.notes || {})[lessonKey()] || "",
       title: b.title, subject: b.subject, grade: classLabel(studentClass()) || S.profile.grade, simple: !!S.settings.simple || !!S.settings.young
     }, extra);
   }
   async function aiCall(b, path, extra) {
-    await ensureUploaded(b);
-    try { return await aiFetch(path, bookPayload(b, extra)); }
-    catch (e) {
-      // ملف منتهٍ (بعد 90 يوماً) أو مفقود من الخادم: نرفعه مرة أخرى ونعيد المحاولة مرة واحدة
-      if (e && e.code === "bad_request" && b.kind === "file") { await ensureUploaded(b, true); return aiFetch(path, bookPayload(b, extra)); }
-      throw e;
-    }
+    await ensureNotes(b);
+    return aiFetch(path, bookPayload(b, extra));
   }
   function aiReward() {
     const rec = dayRec();
     rec.aiQ = (rec.aiQ || 0) + 1;
     if (rec.aiQ <= 10) addXP(3); else { markActive(); save(); }
   }
+  // انتهت حصة اليوم (حدّنا العادل أو حصة Google المجانية) → رسالة تربوية بدل المعلم
+  function aiLimitReached() { dayRec().aiLimit = true; save(); fx("welcome"); render(); const box = document.querySelector(".claude-rest"); if (box) box.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" }); }
   async function aiSend(b, text) {
     if (aiBusy || !text.trim()) return;
+    if (aiLimitedToday()) { aiLimitReached(); return; }
     const chat = S.bookChats[b.id] = S.bookChats[b.id] || [];
     chat.push({ role: "user", text: text.trim() });
     aiBusy = true; aiStatus = "";
@@ -2089,6 +2100,7 @@
       aiReward();
     } catch (e) {
       chat.pop();
+      if (e && (e.code === "ai_limit" || e.code === "daily_limit")) { aiBusy = false; aiLimitReached(); return; }
       toast(aiErrorText(e));
       setTimeout(() => { const f = $("#aiInput"); if (f && !f.value) f.value = text; }, 50);
     } finally {
@@ -2098,6 +2110,7 @@
   }
   async function aiCards(b) {
     if (aiBusy) return;
+    if (aiLimitedToday()) { aiLimitReached(); return; }
     const prompt = aiPrompt("cards");
     aiBusy = true; aiStatus = "المعلم يصنع بطاقاتك"; render();
     try {
@@ -2107,7 +2120,7 @@
       const chat = S.bookChats[b.id] = S.bookChats[b.id] || [];
       chat.push({ role: "user", text: prompt }, { role: "assistant", text: cards.length ? "✔ أضفت **" + cards.length + " بطاقة** إلى «بطاقاتي». راجعها الآن لتثبت المعلومة 🗂️" : "لم أستطع صنع بطاقات من هذا الجزء. جرّب تحديد الدرس أو الصفحات." });
       if (cards.length) { fx("complete"); aiReward(); checkBadges(); }
-    } catch (e) { toast(aiErrorText(e)); }
+    } catch (e) { if (e && (e.code === "ai_limit" || e.code === "daily_limit")) { aiBusy = false; aiLimitReached(); return; } toast(aiErrorText(e)); }
     finally { aiBusy = false; aiStatus = ""; save(); render(); }
   }
 
@@ -2153,21 +2166,8 @@
     window.open(url, "_blank", "noopener");
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
-  // بدون خادم: نجهّز طلباً جاهزاً ونفتح Claude ليُرفق الطالب كتابه ويدرس مجاناً من حسابه
-  /* ---------- Claude المجاني (claude.ai بحساب Google) — بلا أي تكلفة على المشروع ----------
-     التطبيق لا يستطيع معرفة حدّ Claude اليومي بنفسه (هو على claude.ai)، لذلك نسأل الطالب عند عودته. */
-  const claudeLimitedToday = () => !!dayRec().claudeLimit;
-  let claudePending = false;
-  function claudeSteps() {
-    const minor = studentClass() <= 12;
-    return '<ol class="claude-steps small">' +
-      "<li>اضغط «افتح مع Claude» — نجهّز لك الطلب بصفّك ومادتك.</li>" +
-      "<li>أول مرة فقط: اختر <b>«المتابعة باستخدام Google»</b>" + (minor ? " بحساب أحد والديك (Claude للبالغين 18+)" : "") + ". الحساب المجاني يكفي.</li>" +
-      "<li>اضغط 📎 وأرفق ملف الكتاب أو صورة الصفحة، ثم أرسل.</li>" +
-      "<li>ارجع لهنا عندما تنتهي — نحتفظ لك بتقدّمك.</li></ol>";
-  }
-  // رسالة تربوية عند انتهاء حدّ Claude المجاني اليومي، مع بدائل يعملها الطالب بنفسه
-  function claudeRestCard() {
+  /* ---------- رسالة تربوية عند انتهاء حصة المعلم الذكي لليوم ---------- */
+  function aiRestCard() {
     const young = S.settings.young;
     return '<div class="claude-rest">' +
       '<div class="empty-emoji" aria-hidden="true">🌙</div>' +
@@ -2181,28 +2181,8 @@
       '<button class="btn ghost block" data-action="writeReflect">✍️ اكتب أو سجّل ما تعلّمته اليوم</button>' +
       '<button class="btn ghost block" data-action="startQuiz">❓ تحدّي المعلومات</button>' +
       "</div>" +
-      '<p class="small muted center" style="margin-top:10px">' + (S.settings.together || young ? "👨‍👧 أو اطلب من أحد أفراد عائلتك أن يقرأ معك صفحة." : "يتجدد Claude المجاني بعد ساعات، ونكمل معاً غداً 🌱") + "</p></div>";
+      '<p class="small muted center" style="margin-top:10px">' + (S.settings.together || young ? "👨‍👧 أو اطلب من أحد أفراد عائلتك أن يقرأ معك صفحة." : "يعود المعلم الذكي غداً، ونكمل معاً 🌱") + "</p></div>";
   }
-  function askClaudeSession() {
-    claudePending = false;
-    showModal("💜", "كيف كانت جلستك مع Claude؟", "أخبرنا لنقترح عليك الخطوة التالية.",
-      '<div class="stack"><button class="btn block" data-action="claudeGood">👍 تعلّمت شيئاً جديداً</button>' +
-      '<button class="btn ghost block" data-action="claudeLimit">🌙 قال لي إن حدّي اليومي انتهى</button>' +
-      '<button class="linkbtn" data-action="closeModal">لم أبدأ بعد</button></div>');
-  }
-
-  function openClaude(b) {
-    const who = classLabel(studentClass());
-    const prompt = "أنا طالب" + (who ? " في " + who : "") + " وأدرس مادة " + (b.subject || "") + "، وابتعدت عن الدراسة فترة. " +
-      (b.kind === "link" ? "هذا رابط كتابي: " + b.url + " . " : "سأرفق لك كتابي «" + b.title + "». ") +
-      aiPrompt("explain") + " تحدّث معي بالعربية البسيطة، وكن صبوراً ومشجّعاً، ولا تعطني حلول الواجبات مباشرة بل ساعدني أفكّر.";
-    try { if (navigator.clipboard) navigator.clipboard.writeText(prompt).catch(() => {}); } catch (e) {}
-    window.open("https://claude.ai/new?q=" + encodeURIComponent(prompt), "_blank", "noopener");
-    toast(b.kind === "link" ? "فتحنا Claude ✔ أرسل الطلب الجاهز" : "فتحنا Claude ✔ أرفق الكتاب 📎 ثم أرسل");
-    claudePending = true;
-    markActive(); save();
-  }
-
   /* ---------- تحدي المعلومات ---------- */
   function startQuiz() {
     const subs = S.profile.subjects;
@@ -2493,16 +2473,6 @@
       case "grade": if (el.dataset.ok === "1") fx("right"); gradeCard(el.dataset.ok === "1"); break;
       case "endReview": review = null; render(); break;
       case "share": shareProgress(); break;
-      case "claudeGood": closeModal(); addXP(5, "تعلّمت مع Claude"); setTimeout(() => { reflectOpen = true; view = "challenges"; render(); toast("✍️ اكتب أو سجّل ما تعلّمته — هكذا يثبت"); }, 300); break;
-      case "claudeLimit": {
-        closeModal();
-        dayRec().claudeLimit = true; save();
-        view = "books"; studyTab = "books"; render();
-        const box = document.querySelector(".claude-rest");
-        if (box) box.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
-        fx("welcome");
-        break;
-      }
       case "feynman":
         showModal("🗣️", "كن أنت المعلّم", "اختر فكرة واحدة من درسك، واشرحها بصوت عالٍ لشخص تخيّله أمامك — أو لأحد من عائلتك. عندما تتوقف عند كلمة لا تفهمها، اكتبها في بطاقة جديدة لتسأل عنها غداً.",
           '<div class="stack"><button class="btn block" data-action="focusFor" data-m="10" data-s="' + esc((S.profile.subjects[0]) || "عام") + '">⏱️ ابدأ 10 دقائق</button><button class="btn ghost block" data-action="closeModal">لاحقاً</button></div>');
@@ -2625,7 +2595,6 @@
         }, true);
         break;
       }
-      case "openClaude": { const b = S.books.find(x => x.id === openBookId); if (b) openClaude(b); break; }
       case "aiMode": {
         const b = S.books.find(x => x.id === openBookId);
         if (!b) return;
@@ -2788,7 +2757,6 @@
   // عند العودة للتطبيق: حدّث اليوم والمؤقت
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
-    if (claudePending && S.profile && $("#modal").classList.contains("hidden")) setTimeout(askClaudeSession, 400);
     syncReminders();
     if (S.timer && S.timer.end <= Date.now()) finishTimer();
     else if (S.timer && !S.timer.muted && window.Sound) Sound.startAmbient();

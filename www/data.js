@@ -123,11 +123,16 @@ const LOW_MOODS = [0, 5];
 
 const MEMORY_EMOJIS = ["📐", "🧪", "🌍", "📖", "🔭", "🧬", "💡", "🧮"];
 
-/* ===== المعلم الذكي =====
-   ضع هنا رابط خادم المعلم الذكي بعد تشغيله (انظر ai-proxy/README.md).
-   إذا تُرك فارغاً: يعمل زر «افتح مع Claude (مجاني)» فقط. */
+/* ===== المعلم الذكي: Google Gemini عبر Firebase AI Logic (مجاني على خطة Spark) =====
+   هذه القيم عامة بطبيعتها ويمكن نشرها بأمان (لا يوجد هنا أي مفتاح Gemini):
+   Firebase يحفظ مفتاح Gemini عند Google، وApp Check (reCAPTCHA v3) يضمن أن الطلبات من تطبيقنا فقط.
+   خطوات الإعداد: docs/firebase-setup.md */
+const FIREBASE_CONFIG = null; // الصق هنا كائن firebaseConfig من إعدادات مشروع Firebase
 const AI_CONFIG = {
-  proxyUrl: ""
+  proxyUrl: "",
+  recaptchaSiteKey: "",                 // مفتاح الموقع (Site key) من reCAPTCHA v3
+  model: "gemini-3.5-flash-lite",       // سريع (~2 ثانية)، والحصة المجانية أكبر
+  deepModel: "gemini-3.8-flash"         // «شرح أعمق»، ويرجع للسريع تلقائياً إذا كان مشغولاً
 };
 
 /* ===== معلومات التواصل =====
