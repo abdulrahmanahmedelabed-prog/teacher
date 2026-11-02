@@ -28,7 +28,9 @@
 
 ### 2) تطبيق Android (APK)
 - يُبنى تلقائياً عبر `.github/workflows/android.yml` باستخدام **Capacitor** من نفس الكود.
-- لتحميل الـ APK: تبويب **Actions** ← آخر تشغيل لـ **Build Android APK** ← **Artifacts** ← `rehla-alawda-apk`.
+- **رابط التحميل المباشر (دائم):** https://github.com/abdulrahmanahmedelabed-prog/teacher/releases/latest/download/rehla-alawda.apk
+- كل تحديث للكود يبني نسخة جديدة وينشرها تلقائياً في صفحة **Releases**.
+- عند التثبيت قد يطلب الموبايل تفعيل «التثبيت من مصادر غير معروفة».
 
 بناء يدوي على جهازك (يتطلب Node 20 و JDK 17 و Android SDK):
 ```bash
