@@ -40,6 +40,11 @@ npx cap sync android
 cd android && ./gradlew assembleDebug
 ```
 
+## 🌍 الموقع
+- **صفحة الهبوط:** `landing/index.html` تُنشر في جذر الموقع.
+- **التطبيق:** محتوى `www/` يُنشر على المسار `/app/`.
+- الرابط: https://abdulrahmanahmedelabed-prog.github.io/teacher/
+
 ## 🧪 تشغيل محلي
 ```bash
 cd www && python3 -m http.server 8080
@@ -48,8 +53,11 @@ cd www && python3 -m http.server 8080
 
 ## 🗂️ هيكل المشروع
 ```
+landing/
+  index.html     صفحة الهبوط (ملف واحد خفيف)
+resources/android/  أيقونات تطبيق Android
 www/
-  index.html     الصفحة الرئيسية
+  index.html     التطبيق
   styles.css     التصميم (فاتح/داكن، من اليمين لليسار)
   data.js        المواد، قوالب التحديات، المراحل، الأوسمة، الاقتباسات
   app.js         منطق التطبيق كاملاً

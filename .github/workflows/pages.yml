@@ -1,6 +1,6 @@
-# ينشر نسخة الويب (PWA) على GitHub Pages
+# ينشر صفحة الهبوط + نسخة الويب (PWA) على GitHub Pages
 # ملاحظة: فعّل Pages مرة واحدة من Settings ← Pages ← Source: GitHub Actions
-name: Deploy PWA to GitHub Pages
+name: Deploy site to GitHub Pages
 
 on:
   push:
@@ -26,8 +26,14 @@ jobs:
       - uses: actions/checkout@v5
       # يتطلب تفعيل Pages مرة واحدة: Settings ← Pages ← Source: GitHub Actions
       - uses: actions/configure-pages@v5
+      # صفحة الهبوط في الجذر، والتطبيق في /app/
+      - name: Assemble site
+        run: |
+          mkdir -p _site/app
+          cp -r landing/. _site/
+          cp -r www/. _site/app/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: www
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

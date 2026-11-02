@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#6c4cf5">
+  <title>رحلة العودة — ارجع للدراسة خطوة بخطوة</title>
+  <meta name="description" content="ابتعدت عن الدراسة ولا تعرف من أين تبدأ؟ رحلة العودة تطبيق مجاني يعيدك للدراسة بتحديات يومية صغيرة ونقاط ومستويات وألعاب، ويعمل بدون إنترنت.">
+  <meta property="og:title" content="رحلة العودة — ارجع للدراسة خطوة بخطوة">
+  <meta property="og:description" content="تطبيق مجاني يحفّزك للعودة إلى الدراسة والتفوّق: تحديات يومية، نقاط، أوسمة، مؤقت تركيز، ويعمل بدون إنترنت.">
+  <meta property="og:image" content="app/icon-512.png">
+  <link rel="icon" href="app/icon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --bg: #f6f4ff; --card: #fff; --text: #1f1a3d; --muted: #645f88;
+      --primary: #6c4cf5; --primary-2: #9b7bff; --accent: #ff8a3d; --good: #1fbf75;
+      --line: #e4e0fb; --shadow: 0 10px 30px rgba(60, 40, 160, .12);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #110e22; --card: #1c1736; --text: #f1eeff; --muted: #a59fcc; --line: #2e2856; --shadow: 0 10px 30px rgba(0,0,0,.4); }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text); line-height: 1.8;
+      font-family: system-ui, "Segoe UI", "Noto Sans Arabic", "Geeza Pro", Tahoma, sans-serif;
+    }
+    a { color: inherit; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+    section { padding: 64px 0; }
+    h1, h2, h3 { line-height: 1.35; margin: 0 0 12px; }
+    h2 { font-size: clamp(1.6rem, 4vw, 2.2rem); text-align: center; }
+    .sub { text-align: center; color: var(--muted); max-width: 620px; margin: 0 auto 36px; }
+
+    /* شريط علوي */
+    .nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+    .logo { font-weight: 800; font-size: 1.2rem; text-decoration: none; display: flex; gap: 8px; align-items: center; }
+    .logo img { width: 32px; height: 32px; border-radius: 9px; }
+    .nav-links { display: flex; gap: 22px; align-items: center; }
+    .nav-links a { text-decoration: none; color: var(--muted); font-weight: 600; }
+    .nav-links a.btn { color: #fff; }
+    @media (max-width: 720px) { .nav-links a:not(.btn) { display: none; } }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+      padding: 12px 24px; border-radius: 14px; font-weight: 800; text-decoration: none;
+      background: var(--primary); color: #fff; border: 2px solid var(--primary);
+      transition: transform .15s, filter .2s;
+    }
+    .btn:hover { filter: brightness(1.08); transform: translateY(-2px); }
+    .btn.ghost { background: transparent; color: var(--primary); }
+    .btn.light { background: #fff; color: var(--primary); border-color: #fff; }
+    .btn.outline-light { background: transparent; color: #fff; border-color: rgba(255,255,255,.7); }
+    .btn.sm { padding: 8px 16px; font-size: .95rem; }
+
+    /* البطل */
+    .hero { padding: 56px 0 72px; overflow: hidden; }
+    .hero .wrap { display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; }
+    .badge-top { display: inline-block; background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); padding: 4px 14px; border-radius: 999px; font-weight: 700; font-size: .9rem; margin-bottom: 14px; }
+    .hero h1 { font-size: clamp(2rem, 6vw, 3.3rem); font-weight: 900; }
+    .hero h1 span { background: linear-gradient(90deg, var(--primary), #c04cff, var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero p.lead { font-size: 1.15rem; color: var(--muted); margin: 0 0 26px; }
+    .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+    .trust { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 22px; color: var(--muted); font-size: .92rem; }
+    @media (max-width: 860px) { .hero .wrap { grid-template-columns: 1fr; text-align: center; } .cta, .trust { justify-content: center; } }
+
+    /* موبايل تجريبي */
+    .phone {
+      width: 290px; margin: 0 auto; border-radius: 40px; padding: 12px; background: #15112b;
+      box-shadow: 0 30px 60px rgba(60, 30, 160, .35); position: relative; transform: rotate(-3deg);
+    }
+    .screen { border-radius: 30px; overflow: hidden; background: #f4f2ff; color: #1f1a3d; font-size: .78rem; }
+    .s-top { background: linear-gradient(135deg, #6c4cf5, #9b7bff); color: #fff; padding: 14px 14px 10px; display: flex; justify-content: space-between; font-weight: 800; }
+    .s-top span { background: rgba(255,255,255,.2); border-radius: 999px; padding: 0 8px; margin-inline-start: 4px; }
+    .s-body { padding: 10px; }
+    .s-hero { background: linear-gradient(135deg, #6c4cf5, #b05cff 60%, #ff8a3d); color: #fff; border-radius: 14px; padding: 10px; margin-bottom: 8px; }
+    .s-hero b { font-size: .95rem; }
+    .s-bar { height: 7px; background: rgba(255,255,255,.3); border-radius: 9px; margin-top: 6px; }
+    .s-bar i { display: block; height: 100%; width: 64%; background: #fff; border-radius: 9px; }
+    .s-ch { background: #fff; border-radius: 12px; padding: 8px; margin-bottom: 6px; display: flex; gap: 8px; align-items: center; border: 2px solid transparent; }
+    .s-ch.done { border-color: #1fbf75; }
+    .s-ch .c { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #6c4cf5; flex: none; display: grid; place-items: center; color: #fff; font-size: .7rem; }
+    .s-ch.done .c { background: #1fbf75; border-color: #1fbf75; }
+    .s-ch.done .t { text-decoration: line-through; opacity: .7; }
+    .s-xp { margin-inline-start: auto; background: #fff2d6; color: #a76800; border-radius: 9px; padding: 0 6px; font-weight: 700; white-space: nowrap; }
+    .s-nav { display: flex; justify-content: space-around; background: #fff; padding: 8px 0 10px; font-size: 1.05rem; border-top: 1px solid #e4e0fb; }
+    .float { position: absolute; background: var(--card); color: var(--text); border-radius: 14px; padding: 8px 12px; box-shadow: var(--shadow); font-weight: 800; font-size: .85rem; animation: bob 3s ease-in-out infinite; white-space: nowrap; }
+    .f1 { top: 60px; left: -60px; }
+    .f2 { bottom: 110px; right: -50px; animation-delay: 1.2s; }
+    @keyframes bob { 50% { transform: translateY(-10px); } }
+    @media (max-width: 420px) { .f1 { left: -10px; } .f2 { right: -10px; } }
+
+    /* المشكلة */
+    .pain { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .pain > div { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px; text-align: center; }
+    .pain .e { font-size: 2.2rem; }
+    .answer { margin: 28px auto 0; max-width: 640px; text-align: center; font-size: 1.15rem; font-weight: 700; }
+    .answer span { color: var(--primary); }
+
+    /* الخطوات */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: s; }
+    .step { background: var(--card); border-radius: 20px; padding: 24px; box-shadow: var(--shadow); position: relative; }
+    .step::before { counter-increment: s; content: counter(s); position: absolute; top: -16px; right: 20px; width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: #fff; display: grid; place-items: center; font-weight: 900; }
+    .step .e { font-size: 2rem; }
+
+    /* المراحل */
+    .stages { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; position: relative; }
+    .stage { text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 10px; }
+    .stage .ic { width: 60px; height: 60px; margin: 0 auto 8px; border-radius: 50%; display: grid; place-items: center; font-size: 1.7rem; background: linear-gradient(135deg, var(--primary), var(--primary-2)); }
+    .stage small { color: var(--muted); display: block; line-height: 1.6; }
+    .stage .pct { display: inline-block; margin-top: 8px; font-size: .8rem; font-weight: 700; color: var(--primary); }
+
+    /* الميزات */
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .feat { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; transition: transform .2s, box-shadow .2s; }
+    .feat:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+    .feat .e { font-size: 2rem; }
+    .feat p { color: var(--muted); margin: 0; }
+
+    /* بدون نت */
+    .offline { background: linear-gradient(135deg, #1fbf75, #12a0a0); color: #fff; border-radius: 28px; padding: 40px; display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center; }
+    .offline .e { font-size: 4rem; }
+    .offline ul { margin: 10px 0 0; padding-inline-start: 20px; }
+
+    /* التحميل */
+    .download { background: linear-gradient(135deg, var(--primary), #b05cff 60%, var(--accent)); color: #fff; border-radius: 28px; padding: 48px 28px; text-align: center; }
+    .download p { opacity: .92; max-width: 560px; margin: 0 auto 24px; }
+    .download .cta { justify-content: center; }
+    .dl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 760px; margin: 28px auto 0; text-align: right; }
+    .dl-grid > div { background: rgba(255,255,255,.14); border-radius: 18px; padding: 18px; }
+    .dl-grid ol { margin: 6px 0 0; padding-inline-start: 20px; font-size: .95rem; }
+
+    /* الأسئلة */
+    .faq { max-width: 760px; margin: 0 auto; }
+    details { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px; margin-bottom: 10px; }
+    summary { cursor: pointer; font-weight: 800; list-style: none; display: flex; justify-content: space-between; }
+    summary::after { content: "+"; color: var(--primary); font-size: 1.3rem; line-height: 1; }
+    details[open] summary::after { content: "−"; }
+    details p { color: var(--muted); margin: 10px 0 0; }
+
+    .quote { text-align: center; font-size: 1.4rem; font-weight: 800; }
+    footer { border-top: 1px solid var(--line); padding: 28px 0; text-align: center; color: var(--muted); font-size: .92rem; }
+
+    @media (max-width: 860px) {
+      .pain, .steps, .features { grid-template-columns: 1fr; }
+      .stages { grid-template-columns: 1fr 1fr; }
+      .stages .stage:last-child { grid-column: span 2; }
+      .offline { grid-template-columns: 1fr; text-align: center; padding: 28px 20px; }
+      .offline ul { text-align: right; }
+      .dl-grid { grid-template-columns: 1fr; }
+      section { padding: 48px 0; }
+    }
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s, transform .6s; }
+    .reveal.in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; } .float { animation: none; } html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="logo" href="#"><img src="app/icon-192.png" alt="" width="32" height="32"> رحلة العودة</a>
+    <div class="nav-links">
+      <a href="#how">كيف يعمل</a>
+      <a href="#features">الميزات</a>
+      <a href="#download">التحميل</a>
+      <a href="#faq">أسئلة</a>
+      <a class="btn sm" href="app/">ابدأ الآن</a>
+    </div>
+  </div>
+</nav>
+
+<!-- البطل -->
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="badge-top">🎓 مجاني بالكامل · يعمل بدون إنترنت</span>
+      <h1>ابتعدت عن الدراسة؟<br><span>ارجع خطوة بخطوة</span><br>وصِل للتفوّق 🚀</h1>
+      <p class="lead">«رحلة العودة» رفيقك اليومي: يبدأ معك بمهام صغيرة جداً لا تأخذ أكثر من دقائق، ويكبر معك كل يوم بتحديات ممتعة ونقاط وأوسمة، حتى تستعيد إيقاعك وتحقق هدفك.</p>
+      <div class="cta">
+        <a class="btn" href="app/">✨ ابدأ رحلتك الآن</a>
+        <a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/teacher/releases/latest/download/rehla-alawda.apk">📱 حمّل تطبيق Android</a>
+      </div>
+      <div class="trust">
+        <span>✔ بدون تسجيل حساب</span>
+        <span>✔ بياناتك على جهازك</span>
+        <span>✔ مناسب للنت الضعيف</span>
+      </div>
+    </div>
+
+    <div style="position:relative">
+      <div class="phone" aria-hidden="true">
+        <div class="screen">
+          <div class="s-top"><div>🚀 رحلة العودة</div><div><span>🔥 6</span><span>⭐ 420</span></div></div>
+          <div class="s-body">
+            <div class="s-hero"><b>مساء الخير، سارة 👋</b><div>المستوى 3 — المثابر · 🌱 بناء العادة</div><div class="s-bar"><i></i></div></div>
+            <div class="s-ch done"><div class="c">✔</div><div class="t">اشرب ماء وتمدّد 5 دقائق</div><div class="s-xp">+20⭐</div></div>
+            <div class="s-ch done"><div class="c">✔</div><div class="t">لخّص درساً من الأحياء في 5 أسطر</div><div class="s-xp">+34⭐</div></div>
+            <div class="s-ch"><div class="c"></div><div class="t">اشرح قاعدة رياضيات بصوت عالٍ</div><div class="s-xp">+26⭐</div></div>
+            <div class="s-ch"><div class="c"></div><div class="t">حوّل معلومة إلى رسمة أو قصة</div><div class="s-xp">+18⭐</div></div>
+          </div>
+          <div class="s-nav"><span>🏠</span><span>🎯</span><span>⏱️</span><span>🧠</span><span>🗺️</span></div>
+        </div>
+      </div>
+      <div class="float f1">🏅 وسام جديد: أسبوع كامل!</div>
+      <div class="float f2">🔥 6 أيام متتالية</div>
+    </div>
+  </div>
+</header>
+
+<!-- المشكلة -->
+<section style="padding-top:24px">
+  <div class="wrap reveal">
+    <h2>هل تشعر بهذا؟</h2>
+    <p class="sub">الظروف أبعدتك عن الدراسة… والآن العودة تبدو صعبة. لست وحدك.</p>
+    <div class="pain">
+      <div><div class="e">😶‍🌫️</div><h3>لا أعرف من أين أبدأ</h3><p class="sub" style="margin:0">الدروس كثيرة، وكل شيء يبدو متراكماً.</p></div>
+      <div><div class="e">😩</div><h3>فقدت الحماس</h3><p class="sub" style="margin:0">أفتح الكتاب، ثم أغلقه بعد دقيقتين.</p></div>
+      <div><div class="e">📵</div><h3>الظروف صعبة</h3><p class="sub" style="margin:0">نت ضعيف، كهرباء متقطعة، ووقت قليل.</p></div>
+    </div>
+    <p class="answer">الحل ليس أن تدرس 6 ساعات فجأة… الحل أن تبدأ <span>بـ 5 دقائق</span> اليوم، و<span>تكبر كل يوم</span>.</p>
+  </div>
+</section>
+
+<!-- كيف يعمل -->
+<section id="how">
+  <div class="wrap reveal">
+    <h2>كيف يعمل؟</h2>
+    <p class="sub">ثلاث خطوات بسيطة، وأقل من دقيقة لتبدأ.</p>
+    <div class="steps">
+      <div class="step"><div class="e">👋</div><h3>عرّفنا عليك</h3><p>اسمك، موادك، وكم دقيقة تستطيع أن تدرس يومياً. بدون حساب ولا بريد إلكتروني.</p></div>
+      <div class="step"><div class="e">🎯</div><h3>أنجز تحديات اليوم</h3><p>تحديات صغيرة مصمّمة على قدّك، تتغيّر حسب مرحلتك ومزاجك اليوم.</p></div>
+      <div class="step"><div class="e">📈</div><h3>اصعد المستويات</h3><p>اجمع النقاط والأوسمة، وحافظ على سلسلتك 🔥، وتقدّم في رحلتك نحو التفوّق.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- المراحل -->
+<section>
+  <div class="wrap reveal">
+    <h2>رحلتك من 5 مراحل 🗺️</h2>
+    <p class="sub">نبدأ بربع وقتك فقط، ونزيده تدريجياً مع كل يوم دراسة، حتى تصل لإيقاعك الكامل دون ضغط.</p>
+    <div class="stages">
+      <div class="stage"><div class="ic">✨</div><b>إشعال الشرارة</b><small>مهام صغيرة تكسر حاجز البداية</small><span class="pct">25٪ من وقتك</span></div>
+      <div class="stage"><div class="ic">🌱</div><b>بناء العادة</b><small>وقت ثابت يومياً، الاستمرار أولاً</small><span class="pct">40٪ · بعد 3 أيام</span></div>
+      <div class="stage"><div class="ic">🧱</div><b>استعادة الأساس</b><small>مراجعة ما نسيته خطوة بخطوة</small><span class="pct">60٪ · بعد 10 أيام</span></div>
+      <div class="stage"><div class="ic">🚀</div><b>الانطلاق</b><small>تمارين أكثر وتحديات أصعب</small><span class="pct">85٪ · بعد 21 يوماً</span></div>
+      <div class="stage"><div class="ic">🏆</div><b>التفوّق</b><small>إتقان واستعداد للامتحانات</small><span class="pct">100٪ · بعد 35 يوماً</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- الميزات -->
+<section id="features">
+  <div class="wrap reveal">
+    <h2>كل ما تحتاجه لتعود… وتستمتع</h2>
+    <p class="sub">مصمّم ليجعل الدراسة لعبة تريد أن تكسبها.</p>
+    <div class="features">
+      <div class="feat"><div class="e">🎯</div><h3>تحديات يومية ذكية</h3><p>إحماء، دراسة، استرجاع، إبداع، وعناية بنفسك — تتجدد كل يوم حسب موادك.</p></div>
+      <div class="feat"><div class="e">🧭</div><h3>«تايه؟ من وين أبدأ»</h3><p>زر واحد يأخذك في 5 خطوات صغيرة جداً لتبدأ فوراً، بدون تفكير.</p></div>
+      <div class="feat"><div class="e">😊</div><h3>يفهم مزاجك</h3><p>يومك صعب؟ تخفّ التحديات. متحمس؟ يظهر لك تحدٍّ إضافي بمكافأة أكبر.</p></div>
+      <div class="feat"><div class="e">⏱️</div><h3>مؤقت تركيز</h3><p>جلسات من 5 إلى 40 دقيقة، كل دقيقة = نقطتان، ويكمل حتى لو انقطعت الكهرباء.</p></div>
+      <div class="feat"><div class="e">🧠</div><h3>ألعاب تنشيط العقل</h3><p>سباق الأرقام ولعبة الذاكرة — 5 دقائق تجهّز دماغك قبل الدراسة.</p></div>
+      <div class="feat"><div class="e">🏅</div><h3>نقاط وأوسمة ومستويات</h3><p>10 ألقاب و14 وساماً وتحدٍّ أسبوعي كبير، وسلسلة أيام تحفّزك ألا تنقطع.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- بدون نت -->
+<section>
+  <div class="wrap reveal">
+    <div class="offline">
+      <div class="e">📶</div>
+      <div>
+        <h2 style="text-align:right;margin-bottom:6px">صُمّم لظروفك الحقيقية</h2>
+        <p style="margin:0">نعرف أن النت ضعيف والكهرباء تنقطع، لذلك بنيناه ليعمل في كل الأحوال:</p>
+        <ul>
+          <li>يعمل <b>بدون إنترنت</b> بالكامل بعد أول فتح.</li>
+          <li>حجمه صغير جداً ويفتح بسرعة حتى على النت البطيء.</li>
+          <li>كل تقدّمك يُحفظ على جهازك فوراً، ويمكنك نسخه احتياطياً.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- التحميل -->
+<section id="download">
+  <div class="wrap reveal">
+    <div class="download">
+      <h2>ابدأ رحلتك اليوم 🚀</h2>
+      <p>اختر الطريقة المناسبة لك — كلاهما مجاني ويعمل على الموبايل.</p>
+      <div class="cta">
+        <a class="btn light" href="app/">🌐 افتح التطبيق في المتصفح</a>
+        <a class="btn outline-light" href="https://github.com/abdulrahmanahmedelabed-prog/teacher/releases/latest/download/rehla-alawda.apk">📱 حمّل APK لأندرويد</a>
+      </div>
+      <div class="dl-grid">
+        <div>
+          <b>🌐 من المتصفح (أي موبايل)</b>
+          <ol>
+            <li>افتح التطبيق من الزر بالأعلى.</li>
+            <li>من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية».</li>
+            <li>صار عندك تطبيق يعمل بدون نت ✔</li>
+          </ol>
+        </div>
+        <div>
+          <b>📱 تطبيق Android</b>
+          <ol>
+            <li>حمّل ملف APK من الزر بالأعلى.</li>
+            <li>افتحه، واسمح بـ «التثبيت من مصادر غير معروفة» إذا طُلب.</li>
+            <li>ثبّت التطبيق وابدأ ✔</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- الأسئلة -->
+<section id="faq">
+  <div class="wrap reveal">
+    <h2>أسئلة شائعة</h2>
+    <p class="sub">كل ما تريد معرفته قبل أن تبدأ.</p>
+    <div class="faq">
+      <details><summary>هل التطبيق مجاني؟</summary><p>نعم، مجاني بالكامل وبدون إعلانات.</p></details>
+      <details><summary>هل أحتاج إنترنت؟</summary><p>فقط في أول مرة تفتحه أو تحمّله. بعدها يعمل بدون إنترنت تماماً.</p></details>
+      <details><summary>هل أحتاج إنشاء حساب؟</summary><p>لا. تكتب اسمك فقط، وكل بياناتك تبقى على جهازك ولا تُرسل لأي مكان.</p></details>
+      <details><summary>لمن هذا التطبيق؟</summary><p>لأي طالب — من الابتدائي حتى الجامعة — ابتعد عن الدراسة فترة ويريد أن يعود تدريجياً، أو يريد فقط أن يجعل دراسته ممتعة ومنتظمة.</p></details>
+      <details><summary>ماذا لو انقطعت يوماً؟</summary><p>لا مشكلة! تبدأ سلسلة جديدة، وتقدّمك في المستويات والمراحل يبقى محفوظاً. المهم أن تعود.</p></details>
+      <details><summary>كيف أنقل تقدّمي لجهاز آخر؟</summary><p>من الإعدادات اختر «تصدير» لحفظ ملف نسخة احتياطية، ثم «استيراد» على الجهاز الجديد.</p></details>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap reveal">
+    <p class="quote">«إِنَّ مَعَ الْعُسْرِ يُسْرًا» 💜</p>
+    <p class="sub" style="margin-bottom:20px">ظروفك صعبة، لكن إصرارك أقوى. ابدأ بـ 5 دقائق.</p>
+    <div class="cta" style="justify-content:center"><a class="btn" href="app/">✨ ابدأ الآن مجاناً</a></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    🚀 رحلة العودة — صُنع بحب للطلاب ·
+    <a href="https://github.com/abdulrahmanahmedelabed-prog/teacher">الكود مفتوح على GitHub</a>
+  </div>
+</footer>
+
+<script>
+  // ظهور الأقسام عند التمرير
+  (function () {
+    var els = document.querySelectorAll(".reveal");
+    if (!("IntersectionObserver" in window)) { els.forEach(function (e) { e.classList.add("in"); }); return; }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
+    }, { threshold: 0.12 });
+    els.forEach(function (e) { io.observe(e); });
+  })();
+</script>
+</body>
+</html>
