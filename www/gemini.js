@@ -32,7 +32,7 @@
     try {
       const app = FA.initializeApp(cfg());
       // App Check إلزامي لـ Firebase AI Logic: يمنع أي جهة أخرى من استخدام حصتنا
-      if (opt().recaptchaSiteKey) FA.initializeAppCheck(app, { provider: new FA.ReCaptchaV3Provider(opt().recaptchaSiteKey), isTokenAutoRefreshEnabled: true });
+      if (opt().recaptchaSiteKey) FA.initializeAppCheck(app, { provider: opt().recaptchaEnterprise ? new FA.ReCaptchaEnterpriseProvider(opt().recaptchaSiteKey) : new FA.ReCaptchaV3Provider(opt().recaptchaSiteKey), isTokenAutoRefreshEnabled: true });
       ai = FA.getAI(app, { backend: new FA.GoogleAIBackend() });
     } catch (e) { initErr = e; ai = null; }
     return ai;
