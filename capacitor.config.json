@@ -1,0 +1,6 @@
+{
+  "appId": "com.rehla.student",
+  "appName": "رحلة العودة",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}

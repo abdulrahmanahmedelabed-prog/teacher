@@ -1,0 +1,19 @@
+{
+  "name": "rehla-alawda",
+  "version": "1.0.0",
+  "private": true,
+  "description": "رحلة العودة — تطبيق تحفيزي يساعد الطالب على العودة للدراسة (PWA + Android)",
+  "scripts": {
+    "start": "npx --yes serve www -l 8080",
+    "android:add": "npx cap add android",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}
