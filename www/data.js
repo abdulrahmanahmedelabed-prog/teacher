@@ -130,7 +130,7 @@ const MEMORY_EMOJIS = ["📐", "🧪", "🌍", "📖", "🔭", "🧬", "💡", "
 const FIREBASE_CONFIG = { apiKey: "AIzaSyDTxqM0_KZB6Jnx0NgymFik-B5XF8NGLqI", authDomain: "rehla-alawda.firebaseapp.com", projectId: "rehla-alawda", storageBucket: "rehla-alawda.firebasestorage.app", messagingSenderId: "370591624316", appId: "1:370591624316:web:e201cda844b837b4fcadf9" }; // عامة بطبيعتها — الحماية من App Check
 const AI_CONFIG = {
   proxyUrl: "",
-  recaptchaSiteKey: "",                 // مفتاح الموقع (Site key) من reCAPTCHA v3
+  recaptchaSiteKey: "6LcQVA0uAAAAAH3EdD3X_WIEfURphH8SCeLPdOjf",                 // مفتاح الموقع (Site key) من reCAPTCHA v3
   model: "gemini-3.5-flash-lite",       // سريع (~2 ثانية)، والحصة المجانية أكبر
   deepModel: "gemini-3.8-flash"         // «شرح أعمق»، ويرجع للسريع تلقائياً إذا كان مشغولاً
 };
