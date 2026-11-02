@@ -120,6 +120,10 @@
   }
   function markActive() { dayRec().active = true; }
 
+  /* تمييز العدد بالعربية */
+  const arDays = n => n === 1 ? "يوم واحد" : n === 2 ? "يومين" : n + " " + (n <= 10 ? "أيام" : "يوماً");
+  const arMins = n => n === 1 ? "دقيقة واحدة" : n === 2 ? "دقيقتين" : n + " " + (n <= 10 ? "دقائق" : "دقيقة");
+
   /* ================= الإحصاءات ================= */
   function isActive(key) { const h = S.history[key]; return !!(h && h.active); }
 
@@ -192,10 +196,11 @@
     const after = levelInfo(S.xp).level;
     save();
     updateTopbar();
-    if (n > 0 && reason) toast("+" + n + " ⭐ " + reason);
+    if (n > 0 && reason) toast("+" + n + "⭐ " + reason);
     if (after > before) {
       confetti();
-      showModal("🎉", "مستوى جديد: " + after, "لقبك الآن: «" + levelInfo(S.xp).title + "». استمر، أنت تتقدّم فعلاً!");
+      celebrate("🎉", "المستوى " + after + ": " + levelInfo(S.xp).title,
+        "لقب جديد تستحقه! كل مستوى يقرّبك من هدفك" + (S.profile && S.profile.goal ? " «" + S.profile.goal + "»" : "") + ". استمر، أنت تتقدّم فعلاً.");
     }
     checkBadges();
   }
@@ -209,7 +214,7 @@
     const b = newly[0];
     setTimeout(() => {
       confetti();
-      showModal(b.icon, "وسام جديد: " + b.name, b.desc);
+      celebrate(b.icon, "وسام جديد: " + b.name, b.desc);
     }, 400);
   }
 
@@ -308,28 +313,38 @@
     if (!S.daily || S.daily.date !== today()) buildDaily(0);
   }
 
+  let justDone = null;
+  // إنجاز تحدٍّ (بدون رسم) — يُستخدم من الزر ومن نهاية مؤقت التركيز
+  function completeChallenge(ch) {
+    const rec = dayRec();
+    ch.done = true;
+    rec.ch++;
+    addXP(ch.xp);
+    justDone = ch.id;
+    if (S.daily.list.every(c => c.done) && !S.daily.fullAwarded && !rec.full) {
+      S.daily.fullAwarded = true;
+      rec.full = true;
+      S.fullDays++;
+      save();
+      addXP(30, "يوم مثالي!");
+      confetti();
+    }
+    save();
+  }
   function toggleChallenge(id) {
     if (!S.daily || S.daily.date !== today()) { toast("بدأ يوم جديد ✨ إليك تحديات اليوم"); render(); return; }
     const ch = S.daily.list.find(c => c.id === id);
     if (!ch) return;
-    const rec = dayRec();
-    ch.done = !ch.done;
-    if (ch.done) {
-      rec.ch++;
-      addXP(ch.xp, "أحسنت!");
-      if (S.daily.list.every(c => c.done) && !S.daily.fullAwarded && !rec.full) {
-        S.daily.fullAwarded = true;
-        rec.full = true;
-        S.fullDays++;
-        save();
-        addXP(30, "يوم مثالي!");
-        confetti();
-      }
+    if (!ch.done) {
+      flyXP(ch.xp);
+      completeChallenge(ch);
     } else {
+      const rec = dayRec();
+      ch.done = false;
       rec.ch = Math.max(0, rec.ch - 1);
       addXP(-ch.xp);
+      save();
     }
-    save();
     render();
   }
 
@@ -365,7 +380,8 @@
   /* ================= واجهة عامة ================= */
   function updateTopbar() {
     const st = stats();
-    $("#streakPill").textContent = "📅 " + st.weekDays + "/7";
+    $("#streakPill").innerHTML = "🔥 " + st.streak + (st.freezes ? '<sup aria-hidden="true">🧊</sup>' : "");
+    $("#streakPill").setAttribute("aria-label", "سلسلتك: " + st.streak + " أيام" + (st.freezes ? "، ولديك " + st.freezes + " يوم سماح" : "") + " — اضغط للتفاصيل");
     $("#xpPill").textContent = "⭐ " + S.xp;
   }
   let toastT;
@@ -377,7 +393,8 @@
     toastT = setTimeout(() => t.classList.remove("show"), 2200);
   }
   let modalReturn = null;
-  function showModal(emoji, title, body, buttons) {
+  function showModal(emoji, title, body, buttons, cls) {
+    $("#modalCard").className = "modal-card" + (cls ? " " + cls : "");
     $("#modalCard").innerHTML =
       '<div class="big-emoji" aria-hidden="true">' + emoji + '</div><h2 id="modalTitle">' + esc(title) + '</h2><p class="muted" id="modalBody">' + esc(body) + "</p>" +
       (buttons || '<button class="btn block" data-action="closeModal">رائع!</button>');
@@ -391,6 +408,37 @@
     $("#modal").classList.add("hidden");
     if (modalReturn && document.body.contains(modalReturn)) { try { modalReturn.focus({ preventScroll: true }); } catch (e) {} }
     modalReturn = null;
+    if (celebrateQ.length) setTimeout(() => {
+      if (!$("#modal").classList.contains("hidden") || !celebrateQ.length) return;
+      const a = celebrateQ.shift();
+      showModal(a[0], a[1], a[2], a[3], "celebrate");
+    }, 260);
+  }
+  /* الاحتفالات تنتظر دورها حتى لا تتصادم النوافذ (مستوى + وسام + جلسة) */
+  const celebrateQ = [];
+  function celebrate(emoji, title, body, buttons) {
+    if (!$("#modal").classList.contains("hidden")) { celebrateQ.push([emoji, title, body, buttons]); return; }
+    showModal(emoji, title, body, buttons, "celebrate");
+  }
+  const reducedMotion = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  function pulse(el) { if (!el) return; el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); }
+  /* نقاط «تطير» من الزر إلى عدّاد النقاط */
+  let tapEl = null;
+  function flyXP(n) {
+    const pill = $("#xpPill");
+    if (!pill || !tapEl || !document.body.contains(tapEl) || reducedMotion()) { pulse(pill); return; }
+    const a = tapEl.getBoundingClientRect(), b = pill.getBoundingClientRect();
+    const f = document.createElement("span");
+    f.className = "xp-fly";
+    f.textContent = "+" + n + "⭐";
+    f.style.left = (a.left + a.width / 2) + "px";
+    f.style.top = (a.top + a.height / 2) + "px";
+    document.body.appendChild(f);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      f.style.transform = "translate(calc(-50% + " + (b.left + b.width / 2 - a.left - a.width / 2) + "px), " + (b.top + b.height / 2 - a.top - a.height / 2) + "px) scale(.6)";
+      f.style.opacity = "0.3";
+    }));
+    setTimeout(() => { f.remove(); pulse(pill); }, 700);
   }
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && !$("#modal").classList.contains("hidden")) { pendingConfirm = null; closeModal(); }
@@ -447,7 +495,6 @@
         if (h) { h.setAttribute("tabindex", "-1"); try { h.focus({ preventScroll: true }); } catch (e) { h.focus(); } }
       }
     }
-    lastView = view;
     firstRender = false;
   }
   function render() {
@@ -459,6 +506,7 @@
       const same = lastView === "assess", y = window.scrollY;
       app.innerHTML = viewAssess();
       afterRender(same, y);
+      lastView = "assess";
       return;
     }
     document.body.classList.remove("bare");
@@ -472,110 +520,196 @@
     });
     $("#nav").style.display = "";
     const views = { home: viewHome, challenges: viewChallenges, focus: viewFocus, games: viewGames, journey: viewJourney, settings: viewSettings, cards: viewCards };
-    const sameView = view === lastView, y = window.scrollY;
+    // وضع التركيز الكامل: نخفي كل ما يشتّت أثناء الجلسة
+    const running = view === "focus" && !!S.timer && S.timer.end > Date.now();
+    document.body.classList.toggle("focus-run", running);
+    const key = view + (running ? ":run" : "");
+    const sameView = key === lastView, y = window.scrollY;
     app.innerHTML = (views[view] || viewHome)();
     if (view === "focus") tickTimer();
     afterRender(sameView, y);
+    lastView = key;
+    justDone = null;
     if (view === "home" && !maybeWelcomeBack()) maybeAskFeedback();
   }
 
-  /* ---------- البداية ---------- */
+  /* ---------- البداية: سؤال واحد في كل شاشة ---------- */
+  const GRADES = ["ابتدائي", "إعدادي", "ثانوي", "توجيهي / ثانوية عامة", "جامعة"];
+  const WHENS = ["بعد الفجر", "بعد الإفطار", "بعد العصر", "بعد المغرب", "قبل النوم"];
+  const OB0 = () => ({ step: 0, name: "", grade: "", minutes: 45, when: "", away: null, levels: {} });
+  let ob = OB0();
+  const obSteps = () => ["name", "grade", "subjects", "time", "away"].concat(onboardSel.map((s, i) => "lvl:" + i));
+
   function renderOnboarding() {
     $("#nav").style.display = "none";
+    const steps = obSteps();
+    if (ob.step >= steps.length) ob.step = steps.length - 1;
+    const k = steps[ob.step];
+    const choice = (key, v, label, sel, auto) => '<button type="button" class="choice' + (sel ? " sel" : "") + '" data-action="obSet" data-k="' + key + '" data-v="' + esc(v) + '"' + (auto ? ' data-auto="1"' : "") + ' aria-pressed="' + !!sel + '">' + label + "</button>";
+    let body = "", showNext = true, nextLabel = "التالي";
+    if (k === "name") {
+      body = '<div class="ob-emoji" aria-hidden="true">🚀</div><h2>أهلاً بك في رحلة العودة</h2>' +
+        '<p class="muted">ابتعدت عن الدراسة فترة؟ لا مشكلة. نبدأ معك بخطوات صغيرة جداً، ونكبر معاً كل يوم.</p>' +
+        '<label for="obName">ما اسمك؟</label><input type="text" id="obName" maxlength="30" autocomplete="given-name" placeholder="اكتب اسمك" value="' + esc(ob.name) + '">';
+      nextLabel = "لنبدأ";
+    } else if (k === "grade") {
+      body = '<div class="ob-emoji" aria-hidden="true">🎓</div><h2>في أي مرحلة دراسية أنت؟</h2><div class="choices">' +
+        GRADES.map(g => choice("grade", g, g, ob.grade === g, true)).join("") + "</div>";
+      showNext = !!ob.grade;
+    } else if (k === "subjects") {
+      body = '<div class="ob-emoji" aria-hidden="true">📚</div><h2>ما المواد التي تريد العودة إليها؟</h2><p class="muted">اختر مادة أو أكثر — يمكنك تغييرها لاحقاً.</p><div class="chips">' +
+        SUBJECTS.map(x => '<button type="button" class="chip' + (onboardSel.includes(x) ? " sel" : "") + '" data-action="obSubject" data-s="' + esc(x) + '" aria-pressed="' + onboardSel.includes(x) + '">' + esc(x) + "</button>").join("") + "</div>";
+    } else if (k === "time") {
+      body = '<div class="ob-emoji" aria-hidden="true">⏰</div><h2>كم دقيقة تستطيع أن تدرس يومياً؟</h2><p class="muted">في الوضع الطبيعي. لا تقلق: نبدأ بربع هذا الوقت فقط.</p><div class="chips">' +
+        [20, 30, 45, 60, 90, 120].map(m => '<button type="button" class="chip' + (ob.minutes === m ? " sel" : "") + '" data-action="obSet" data-k="minutes" data-v="' + m + '">' + m + " د</button>").join("") + "</div>" +
+        '<h3 class="ob-sub">ومتى ستدرس عادةً؟ <span class="muted small">(وقت ثابت يبني العادة)</span></h3><div class="chips">' +
+        WHENS.map(w => '<button type="button" class="chip' + (ob.when === w ? " sel" : "") + '" data-action="obSet" data-k="when" data-v="' + w + '">' + w + "</button>").join("") + "</div>";
+    } else if (k === "away") {
+      body = '<div class="ob-emoji" aria-hidden="true">⏳</div><h2>كم صار لك بعيد عن الدراسة؟</h2><p class="muted">ليس امتحاناً ولا توجد إجابة خاطئة — فقط لنبني خطتك على مقاسك.</p><div class="choices">' +
+        AWAY.map((a, i) => choice("away", i, a, ob.away === i, true)).join("") + "</div>";
+      showNext = ob.away !== null;
+    } else {
+      const i = +k.split(":")[1], sb = onboardSel[i];
+      body = '<p class="muted small center">مادة ' + (i + 1) + " من " + onboardSel.length + '</p><h2 class="center">كيف تشعر بمستواك في<br><span class="hl">' + esc(sb) + "</span>؟</h2>" +
+        '<div class="choices faces">' + LEVELS.map((l, j) => choice("lvl", j + 1, '<span class="face" aria-hidden="true">' + l.e + "</span>" + l.t, ob.levels[sb] === j + 1, true)).join("") + "</div>";
+      showNext = !!ob.levels[sb];
+      if (i === onboardSel.length - 1) nextLabel = "ابدأ الرحلة ✨";
+    }
     app.innerHTML =
-      '<div class="card hero center"><div style="font-size:3rem">🚀</div>' +
-      "<h2>أهلاً بك في رحلة العودة</h2>" +
-      '<p class="muted">ابتعدت عن الدراسة فترة؟ لا مشكلة. سنبدأ معك بخطوات صغيرة جداً، ونكبر معاً كل يوم حتى تصل للنجاح والتفوّق.</p></div>' +
-      '<div class="card"><h3>عرّفنا عليك</h3>' +
-      '<label for="obName">اسمك</label><input type="text" id="obName" maxlength="30" placeholder="مثلاً: أحمد">' +
-      '<label for="obGrade">مرحلتك الدراسية</label><select id="obGrade">' +
-      ["ابتدائي", "إعدادي", "ثانوي", "توجيهي / ثانوية عامة", "جامعة"].map(g => "<option>" + g + "</option>").join("") +
-      "</select>" +
-      "<label>المواد التي تريد العودة إليها</label><div class=\"chips\" id=\"obSubjects\">" +
-      SUBJECTS.map(s => '<button type="button" class="chip' + (onboardSel.includes(s) ? " sel" : "") + '" data-action="obSubject" data-s="' + esc(s) + '">' + esc(s) + "</button>").join("") +
-      "</div>" +
-      '<label for="obMinutes">كم دقيقة تستطيع أن تدرس يومياً (في الوضع الطبيعي)؟</label><select id="obMinutes">' +
-      [20, 30, 45, 60, 90, 120].map(m => '<option value="' + m + '"' + (m === 45 ? " selected" : "") + ">" + m + " دقيقة</option>").join("") +
-      "</select>" +
-      '<p class="small muted">لا تقلق، سنبدأ بربع هذا الوقت فقط ونزيده تدريجياً.</p>' +
-      "<label>متى ستدرس عادةً؟ (وقت ثابت يساعدك على بناء العادة)</label><div class=\"chips\">" +
-      ["بعد الفجر", "بعد الإفطار", "بعد العصر", "بعد المغرب", "قبل النوم"].map(w => '<button type="button" class="chip" data-action="obWhen" data-w="' + w + '">' + w + "</button>").join("") + "</div>" +
-      '<label for="obGoal">ما هو هدفك؟</label><input type="text" id="obGoal" maxlength="80" placeholder="مثلاً: أنجح بمعدل 90٪">' +
-      '<br><br><button class="btn big block" data-action="obStart">لنبدأ الرحلة ✨</button></div>';
+      '<section class="onboard">' +
+      '<div class="ob-top"><div class="dots" role="progressbar" aria-label="الخطوة ' + (ob.step + 1) + " من " + steps.length + '" aria-valuenow="' + (ob.step + 1) + '" aria-valuemin="1" aria-valuemax="' + steps.length + '">' +
+      steps.map((_, i) => '<i class="' + (i < ob.step ? "done" : i === ob.step ? "on" : "") + '"></i>').join("") + "</div></div>" +
+      '<div class="ob-body">' + body + "</div>" +
+      '<div class="ob-foot">' +
+      (ob.step > 0 ? '<button type="button" class="btn ghost back" data-action="obBack">→ رجوع</button>' : "") +
+      (showNext ? '<button type="button" class="btn big grow" data-action="obNext">' + nextLabel + "</button>" : "") +
+      "</div></section>";
+    const nm = $("#obName");
+    if (nm && !nm.value) setTimeout(() => nm.focus(), 50);
+  }
+  function obNext() {
+    const steps = obSteps(), k = steps[ob.step];
+    if (k === "name") {
+      ob.name = ($("#obName").value || "").trim();
+      if (!ob.name) { toast("اكتب اسمك أولاً 🙂"); $("#obName").focus(); return; }
+    }
+    if (k === "subjects" && !onboardSel.length) { toast("اختر مادة واحدة على الأقل"); return; }
+    if (ob.step >= steps.length - 1) { finishOnboarding(); return; }
+    ob.step++;
+    renderOnboarding();
+  }
+  function finishOnboarding() {
+    const levels = {};
+    onboardSel.forEach(x => { levels[x] = ob.levels[x] || 3; });
+    S.profile = { name: ob.name, grade: ob.grade || GRADES[2], subjects: onboardSel.slice(), minutes: ob.minutes, goal: "", when: ob.when, lastLesson: {} };
+    S.assess.push({ date: today(), away: ob.away == null ? 0 : ob.away, levels });
+    S.daily = null;
+    const away = ob.away;
+    ob = OB0();
+    save();
+    view = "home";
+    render();
+    addXP(20);
+    showModal("✨", "مرحباً " + S.profile.name + "!", welcomePlan(levels, away));
+  }
+  function welcomePlan(levels, away) {
+    const subs = Object.keys(levels).sort((a, b) => levels[b] - levels[a]);
+    const strong = subs[0], weak = subs[subs.length - 1];
+    return (away >= 3 ? "غبت فترة طويلة، وهذا لا يقلل منك أبداً. " : "") +
+      "نبدأ بمادتك الأقوى «" + strong + "» لنكسب الحماس" +
+      (weak !== strong ? "، ثم نعطي «" + weak + "» اهتماماً أكبر تدريجياً" : "") +
+      ". ما عليك اليوم إلا أن تنجز خطوة واحدة!";
   }
 
   /* ---------- الرئيسية ---------- */
+  let progressOpen = false;
+  function weekStripHTML() {
+    const ws = weekStart();
+    const dayNames = ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"];
+    let w = "";
+    for (let i = 0; i < 7; i++) {
+      const k = dateKey(addDays(ws, i));
+      w += '<div class="' + (isActive(k) ? "active " : "") + (k === today() ? "today" : "") + '">' + dayNames[i] + "<b>" + (isActive(k) ? "✔" : "·") + "</b></div>";
+    }
+    return '<div class="week">' + w + "</div>";
+  }
+  const dotsHTML = list => '<span class="dots small-dots" aria-label="أنجزت ' + list.filter(c => c.done).length + " من " + list.length + '">' +
+    list.map(c => '<i class="' + (c.done ? "done" : "") + '"></i>').join("") + "</span>";
+  const metaHTML = c => '<div class="meta">' + TYPE_LABEL[c.type] + " · ⏳ " + c.minutes + ' د · <b class="xpc">+' + c.xp + "⭐</b></div>";
+
   function viewHome() {
     const st = stats();
     const lv = levelInfo(S.xp);
     const rec = dayRec();
-    const doneCount = S.daily.list.filter(c => c.done).length;
-    const total = S.daily.list.length;
+    const list = S.daily.list;
     const quote = QUOTES[dayNumber(today()) % QUOTES.length];
-    const hour = new Date().getHours();
-    const greet = hour < 12 ? "صباح الخير" : "مساء الخير";
+    const greet = new Date().getHours() < 12 ? "صباح الخير" : "مساء الخير";
     const wk = weeklyChallenge();
-
-    // شريط الأسبوع
-    const ws = weekStart();
-    const dayNames = ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"];
-    let week = "";
-    for (let i = 0; i < 7; i++) {
-      const k = dateKey(addDays(ws, i));
-      week += '<div class="' + (isActive(k) ? "active " : "") + (k === today() ? "today" : "") + '">' + dayNames[i] + "<br><b>" + (isActive(k) ? "✔" : "·") + "</b></div>";
-    }
-
-    const next = S.daily.list.find(c => !c.done);
+    const low = LOW_MOODS.includes(rec.mood);
+    const next = (low && list.find(c => !c.done && c.type === "wellbeing")) || list.find(c => !c.done);
     const due = dueCards().length;
+    const bigLost = st.activeDays <= 3 || st.gapDays >= 2;
+
     let nextCard;
     if (next) {
-      nextCard = '<div class="card next-step"><div class="row"><h3 class="grow">👉 خطوتك التالية</h3><span class="muted small">' + doneCount + " / " + total + "</span></div>" +
-        '<p class="next-text">' + esc(next.text) + "</p>" +
-        '<span class="tag">⏳ ' + next.minutes + ' د</span><span class="tag xp">+' + next.xp + " ⭐</span>" +
-        '<div class="grid-2" style="margin-top:12px">' +
-        ((next.type === "study" || next.type === "bonus") ?
-          '<button class="btn good" data-action="focusFor" data-m="' + next.minutes + '" data-s="' + esc(next.subject) + '">⏱️ ابدأ بمؤقت</button>' :
-          '<button class="btn secondary" data-action="go" data-v="challenges">كل التحديات</button>') +
-        '<button class="btn" data-action="toggle" data-id="' + esc(next.id) + '">✔ أنجزتها</button></div></div>';
+      const study = next.type === "study" || next.type === "bonus";
+      nextCard = '<section class="card next-step' + (justDone ? " enter" : "") + '" aria-labelledby="nextH"><div class="row"><h3 class="grow" id="nextH">👉 خطوتك التالية</h3>' + dotsHTML(list) + "</div>" +
+        '<p class="next-text">' + esc(next.text) + "</p>" + metaHTML(next) +
+        '<div class="stack">' +
+        (study ?
+          '<button class="btn big good block" data-action="focusFor" data-id="' + esc(next.id) + '" data-m="' + next.minutes + '" data-s="' + esc(next.subject) + '">▶ ابدأ الآن · ' + next.minutes + " د</button>" +
+          '<button class="btn ghost block" data-action="toggle" data-id="' + esc(next.id) + '">✔ أنجزتها بدون مؤقت</button>' :
+          '<button class="btn big block" data-action="toggle" data-id="' + esc(next.id) + '">✔ أنجزتها</button>') +
+        (low && !rec.rest && !rec.active ? '<button class="btn ghost block" data-action="restDay">🌿 اجعل اليوم يوم راحة</button>' : "") +
+        (!bigLost ? '<button class="linkbtn" data-action="lost">🧭 تايه؟ من وين أبدأ</button>' : "") +
+        "</div></section>";
     } else {
-      nextCard = '<div class="card next-step center"><div style="font-size:2.4rem">🎉</div><h3>أنجزت كل تحديات اليوم!</h3>' +
-        '<p class="muted small">' + (due ? "عندك " + due + " بطاقة للمراجعة — دقائق قليلة تثبّت ما تعلمته." : "خذ استراحة ممتعة، أو اكتب تأمّل اليوم.") + "</p>" +
-        (due ? '<button class="btn good block" data-action="go" data-v="cards">🔁 راجع بطاقاتك</button>' : '<button class="btn secondary block" data-action="go" data-v="challenges">✍️ تأمّل اليوم</button>') + "</div>";
+      nextCard = '<section class="card next-step center' + (justDone ? " enter" : "") + '"><div class="empty-emoji" aria-hidden="true">🎉</div><h3>أنجزت كل خطوات اليوم!</h3>' +
+        '<p class="muted small">' + (due ? "عندك " + due + " بطاقة للمراجعة — دقائق قليلة تثبّت ما تعلمته." : rec.reflected ? "يوم رائع. استرح، ونراك غداً 💜" : "اختم يومك بتأمّل قصير، أو خذ استراحة ممتعة.") + "</p>" +
+        (due ? '<button class="btn good block" data-action="go" data-v="cards">🔁 راجع بطاقاتك</button>' :
+          !rec.reflected ? '<button class="btn ghost block" data-action="writeReflect">✍️ اكتب تأمّل اليوم</button>' : "") + "</section>";
     }
 
-    return '<div class="card hero">' +
+    const weeklyReady = wk.val >= wk.target && !wk.claimed;
+    return '<section class="card hero">' +
       "<h2>" + greet + "، " + esc(S.profile.name) + " 👋</h2>" +
-      '<div class="muted">المستوى ' + lv.level + " — " + lv.title + " · " + st.stageObj.icon + " " + st.stageObj.name + "</div>" +
-      '<div class="progress" style="margin-top:10px" role="progressbar" aria-label="التقدم للمستوى التالي" aria-valuenow="' + lv.pct + '" aria-valuemin="0" aria-valuemax="100"><div style="width:' + lv.pct + '%"></div></div>' +
-      '<div class="small muted" style="margin-top:4px">باقي ' + lv.toNext + " نقطة للمستوى التالي" +
-      (S.profile.when ? " · ⏰ موعدك: " + esc(S.profile.when) : "") + "</div></div>" +
+      '<div class="hero-meta">المستوى ' + lv.level + " · " + lv.title + " · " + st.stageObj.icon + " " + st.stageObj.name + "</div>" +
+      '<div class="progress" role="progressbar" aria-label="التقدم للمستوى التالي" aria-valuenow="' + lv.pct + '" aria-valuemin="0" aria-valuemax="100"><div style="width:' + lv.pct + '%"></div></div>' +
+      '<div class="hero-meta small">باقي ' + lv.toNext + " ⭐ للمستوى التالي" + (S.profile.when ? " · ⏰ " + esc(S.profile.when) : "") + "</div></section>" +
+
+      '<section class="mood-wrap" aria-label="كيف حالك اليوم؟"><span class="mood-q">كيف حالك اليوم؟</span><div class="mood-row">' +
+      MOOD_ORDER.map(i => { const m = MOODS[i]; return '<button data-action="mood" data-i="' + i + '" class="' + (rec.mood === i ? "sel" : "") + '" title="' + m.label + '" aria-label="' + m.label + '" aria-pressed="' + (rec.mood === i) + '">' + m.e + "</button>"; }).join("") +
+      "</div>" + (rec.mood !== null && MOODS[rec.mood] ? '<p class="mood-msg">' + MOODS[rec.mood].msg + "</p>" : "") +
+      (rec.rest ? '<p class="mood-msg">🌿 اليوم يوم راحة — الراحة جزء من الرحلة. نراك غداً 💜</p>' : "") +
+      (lowStreak() >= 3 ? '<p class="mood-msg care">💜 لاحظنا أن الأيام الأخيرة صعبة عليك. تحدّث مع شخص تثق به — أحد أفراد أسرتك أو معلم أو مرشد المدرسة. لست وحدك.</p>' : "") +
+      "</section>" +
 
       nextCard +
+      (bigLost ? '<button class="btn accent big block" data-action="lost">🧭 تايه؟ من وين أبدأ</button>' : "") +
 
-      '<button class="btn accent big block" data-action="lost">🧭 تايه؟ من وين أبدأ</button><br><br>' +
+      (weeklyReady ? '<section class="card weekly-ready center"><b>🏅 أكملت تحدي الأسبوع!</b><p class="small muted">' + wk.text + '</p><button class="btn good block" data-action="claimWeekly">استلم 150 ⭐</button></section>' : "") +
 
-      '<div class="card"><h3>كيف حالك اليوم؟</h3><div class="mood-row">' +
-      MOOD_ORDER.map(i => { const m = MOODS[i]; return '<button data-action="mood" data-i="' + i + '" class="' + (rec.mood === i ? "sel" : "") + '" title="' + m.label + '" aria-label="' + m.label + '" aria-pressed="' + (rec.mood === i) + '">' + m.e + "</button>"; }).join("") +
-      "</div>" + (rec.mood !== null && MOODS[rec.mood] ? '<p class="small muted">' + MOODS[rec.mood].msg + "</p>" : "") +
-      (LOW_MOODS.includes(rec.mood) && !rec.rest && !rec.active ? '<button class="btn secondary block" data-action="restDay">🌿 اجعل اليوم يوم راحة (يُحسب لك)</button>' : "") +
-      (rec.rest ? '<p class="small muted">🌿 اليوم يوم راحة — الراحة جزء من الرحلة. نراك غداً 💜</p>' : "") +
-      (lowStreak() >= 3 ? '<p class="small" style="margin-bottom:0">💜 لاحظنا أن الأيام الأخيرة صعبة عليك. تحدّث مع شخص تثق به — أحد أفراد أسرتك أو معلم أو مرشد المدرسة. لست وحدك.</p>' : "") +
-      "</div>" +
-
-      '<div class="card"><h3>📈 تقدّمك</h3><div class="week">' + week + "</div><br>" +
+      '<details class="card progress-card" id="progressCard"' + (progressOpen ? " open" : "") + ">" +
+      '<summary><b class="grow">📈 تقدّمك</b><span class="muted small">🔥' + st.streak + " · ⏱️" + S.totalFocus + " د · 🏅" + S.badges.length + "</span></summary>" +
+      '<div class="stack">' + weekStripHTML() +
       '<div class="grid-3">' +
-      '<div class="stat"><b>' + st.streak + (st.freezes ? ' <span title="أيام سماح" class="small">🧊' + st.freezes + "</span>" : "") + '</b><span class="small muted">أيام متتالية</span></div>' +
+      '<div class="stat"><b>' + st.streak + (st.freezes ? ' <span class="small" title="أيام سماح">🧊' + st.freezes + "</span>" : "") + '</b><span class="small muted">أيام متتالية</span></div>' +
       '<div class="stat"><b>' + S.totalFocus + '</b><span class="small muted">دقيقة تركيز</span></div>' +
       '<div class="stat"><b>' + S.badges.length + '</b><span class="small muted">وسام</span></div></div>' +
-      '<p class="small muted" style="margin:8px 0 0">🧊 كل 7 أيام دراسة تمنحك «يوم سماح» يحمي سلسلتك إذا غبت يوماً.</p>' +
-      '<hr class="sep"><b>🏅 تحدي الأسبوع:</b> ' + wk.text +
+      '<p class="small muted">🧊 كل 7 أيام دراسة تمنحك «يوم سماح» يحمي سلسلتك إذا غبت يوماً.</p>' +
+      '<div><b>🏅 تحدي الأسبوع:</b> ' + wk.text +
       '<div class="progress" style="margin-top:6px"><div style="width:' + Math.round(wk.val / wk.target * 100) + '%"></div></div>' +
-      '<div class="row" style="margin-top:8px"><span class="grow muted small">' + wk.val + " / " + wk.target + " · المكافأة 150 ⭐</span>" +
-      (wk.claimed ? '<span class="tag">تم الاستلام ✔</span>' :
-        '<button class="btn" data-action="claimWeekly"' + (wk.val >= wk.target ? "" : " disabled") + ">استلم</button>") + "</div></div>" +
+      '<div class="small muted" style="margin-top:4px">' + wk.val + " / " + wk.target + " · المكافأة 150 ⭐" + (wk.claimed ? " · تم الاستلام ✔" : "") + "</div></div>" +
+      "</div></details>" +
 
-      '<div class="card center"><p style="font-weight:700;margin:0">💬 ' + esc(quote) + "</p>" +
-      (S.profile.goal ? '<p class="small muted" style="margin:6px 0 0">هدفك: ' + esc(S.profile.goal) + "</p>" : "") + "</div>";
+      '<p class="quote-line">💬 ' + esc(quote) + (S.profile.goal ? '<br><span class="small muted">هدفك: ' + esc(S.profile.goal) + "</span>" : "") + "</p>";
+  }
+  function streakSheet() {
+    const st = stats();
+    showModal("🔥", st.streak + " " + (st.streak >= 3 && st.streak <= 10 ? "أيام" : "يوم") + " متتالية",
+      "كل يوم تدرس فيه ولو 5 دقائق يُحسب. وكل 7 أيام دراسة تمنحك «يوم سماح» 🧊 يحمي سلسلتك تلقائياً إذا غبت يوماً." +
+      (st.freezes ? " عندك الآن " + st.freezes + " يوم سماح." : "") + " أفضل سلسلة لك: " + st.bestStreak + ".",
+      weekStripHTML() + '<br><button class="btn block" data-action="closeModal">تمام</button>');
   }
 
   // عدد الأيام المتتالية (حتى اليوم) بمزاج متعب أو قلق
@@ -605,70 +739,76 @@
     "ما خطوتك الأولى غداً؟ اكتبها بوضوح."
   ];
   const TYPE_LABEL = { warmup: "إحماء", wellbeing: "عناية بنفسك", study: "دراسة", recall: "استرجاع", creative: "إبداع", bonus: "إضافي" };
+  let reflectOpen = false;
   function viewChallenges() {
     const rec = dayRec();
-    const items = S.daily.list.map(c =>
-      '<div class="challenge' + (c.done ? " done" : "") + '">' +
-      '<button class="check" data-action="toggle" data-id="' + esc(c.id) + '" aria-label="إنجاز">' + (c.done ? "✔" : "") + "</button>" +
-      '<div class="grow"><div class="ch-text">' + esc(c.text) + "</div>" +
-      '<span class="tag">' + TYPE_LABEL[c.type] + '</span><span class="tag">⏳ ' + c.minutes + ' د</span><span class="tag xp">+' + c.xp + " ⭐</span>" +
-      (!c.done && c.type === "recall" ? ' <button class="chip small" data-action="go" data-v="cards">افتح البطاقات 🗂️</button>' : "") +
-      (!c.done && (c.type === "study" || c.type === "bonus") ? ' <button class="chip small" data-action="focusFor" data-m="' + c.minutes + '" data-s="' + esc(c.subject) + '">ابدأ بمؤقت ⏱️</button>' : "") +
-      "</div></div>").join("");
-
-    return '<div class="card"><h2>🎯 تحديات اليوم</h2>' +
-      '<p class="muted small">مصمّمة على قدّك وحسب مرحلتك. أنجزها بالترتيب، وكل واحدة تعطيك نقاطاً.</p>' + items +
-      (S.daily.rerolls < 1 && !S.daily.list.some(c => c.done) ?
-        '<button class="btn secondary block" data-action="reroll">🎲 غيّر التحديات (مرة واحدة يومياً)</button>' : "") +
-      "</div>" +
-      '<div class="card"><h3>🧠 استراحة ذهنية</h3><p class="small muted">بين جلسات الدراسة: لعبة قصيرة ممتعة (حتى ' + GAME_XP_CAP + ' ⭐ يومياً).</p>' +
-      '<div class="grid-3"><button class="btn secondary" data-action="startMath">⚡ أرقام</button>' +
-      '<button class="btn secondary" data-action="startQuiz">❓ معلومات</button>' +
-      '<button class="btn secondary" data-action="startMemory">🃏 ذاكرة</button></div></div>' +
-      '<div class="card"><h3>📓 تأمّل اليوم</h3>' +
-      (rec.reflected ? '<p class="muted">كتبت تأمّل اليوم ✔ — أحسنت! الكتابة تثبّت ما تعلمته.</p>' :
-        '<p class="small muted">' + REFLECT_PROMPTS[dayNumber(today()) % REFLECT_PROMPTS.length] + " (+15 ⭐)</p>" +
-        '<textarea id="reflectText" maxlength="600" placeholder="اكتب بحرية…"></textarea><br><br>' +
-        '<button class="btn block" data-action="reflect">احفظ التأمّل</button>') + "</div>";
+    const list = S.daily.list;
+    const item = c => '<div class="challenge' + (c.done ? " done" : "") + '">' +
+      '<button class="check' + (c.id === justDone ? " pop" : "") + '" data-action="toggle" data-id="' + esc(c.id) + '" aria-pressed="' + c.done + '" aria-label="' + (c.done ? "إلغاء الإنجاز: " : "إنجاز: ") + esc(c.text) + '">' + (c.done ? "✔" : "") + "</button>" +
+      '<div class="grow"><div class="ch-text">' + esc(c.text) + "</div>" + metaHTML(c) +
+      (!c.done && c.type === "recall" ? '<button class="btn ghost sm" data-action="go" data-v="cards">🗂️ افتح البطاقات</button>' : "") +
+      (!c.done && (c.type === "study" || c.type === "bonus") ? '<button class="btn ghost sm" data-action="focusFor" data-id="' + esc(c.id) + '" data-m="' + c.minutes + '" data-s="' + esc(c.subject) + '">▶ ابدأ بمؤقت</button>' : "") +
+      "</div></div>";
+    const todo = list.filter(c => !c.done), done = list.filter(c => c.done);
+    const prompt = REFLECT_PROMPTS[dayNumber(today()) % REFLECT_PROMPTS.length];
+    return '<section class="card"><div class="row"><h2 class="grow">🎯 تحديات اليوم</h2>' + dotsHTML(list) + "</div>" +
+      (todo.length ? todo.map(item).join("") : '<p class="center muted">🎉 أنجزت كل تحديات اليوم!</p>') +
+      (done.length ? '<div class="done-group">' + done.map(item).join("") + "</div>" : "") +
+      (S.daily.rerolls < 1 && !done.length ? '<button class="linkbtn" data-action="reroll">🎲 لا تناسبني؟ غيّرها (مرة يومياً)</button>' : "") +
+      "</section>" +
+      '<section class="card"><h3>🧠 استراحة ذهنية</h3><p class="small muted">لعبة قصيرة بين جلسات الدراسة (حتى ' + GAME_XP_CAP + ' ⭐ يومياً).</p>' +
+      '<div class="grid-3"><button class="btn ghost" data-action="startMath">⚡ أرقام</button>' +
+      '<button class="btn ghost" data-action="startQuiz">❓ معلومات</button>' +
+      '<button class="btn ghost" data-action="startMemory">🃏 ذاكرة</button></div></section>' +
+      '<section class="card" id="reflectCard"><h3>📓 تأمّل اليوم</h3>' +
+      (rec.reflected ? '<p class="muted">كتبت تأمّل اليوم ✔ — الكتابة تثبّت ما تعلمته.</p>' :
+        '<p class="small muted">' + prompt + "</p>" +
+        (reflectOpen ? '<textarea id="reflectText" maxlength="600" placeholder="اكتب بحرية…" aria-label="' + prompt + '"></textarea><div class="stack"><button class="btn block" data-action="reflect">احفظ (+15 ⭐)</button></div>' :
+          '<button class="btn ghost block" data-action="openReflect">✍️ اكتب تأمّلك (+15 ⭐)</button>')) + "</section>";
   }
 
   /* ---------- مؤقت التركيز ---------- */
   let focusChoice = { minutes: 15, subject: null };
   let timerInt = null;
+  const FOCUS_LINES = ["ركّز على هذه الصفحة فقط 📖", "كل دقيقة الآن تبني مستقبلك 💪", "أنت تقوم بعمل رائع", "تنفّس… واستمر 🌿", "خطوة صغيرة، أثر كبير"];
+  const ringHTML = (label) => '<div class="timer-ring"><svg viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="105" stroke="var(--line)" stroke-width="14" fill="none"/>' +
+    '<circle id="ring" cx="120" cy="120" r="105" stroke="var(--primary)" stroke-width="14" fill="none" stroke-linecap="round" stroke-dasharray="' + (2 * Math.PI * 105) + '" stroke-dashoffset="0"/></svg>' +
+    '<div class="time" id="timeText" role="timer" aria-live="off">' + label + "</div></div>";
   function viewFocus() {
     const t = S.timer;
     const subs = S.profile.subjects.length ? S.profile.subjects : ["عام"];
-    if (!focusChoice.subject) focusChoice.subject = subs[0];
-    const running = t && t.end > Date.now();
-    const C = 2 * Math.PI * 105;
-    return '<div class="card center"><h2>⏱️ جلسة تركيز</h2>' +
-      '<p class="muted small">ابعد الهاتف عن متناول يدك (اترك التطبيق مفتوحاً فقط)، واختر مادة ومدة. كل دقيقة تركيز = 2 ⭐</p>' +
-      '<div class="timer-ring"><svg width="240" height="240"><circle cx="120" cy="120" r="105" stroke="var(--line)" stroke-width="14" fill="none"/>' +
-      '<circle id="ring" cx="120" cy="120" r="105" stroke="var(--primary)" stroke-width="14" fill="none" stroke-linecap="round" stroke-dasharray="' + C + '" stroke-dashoffset="0"/></svg>' +
-      '<div class="time" id="timeText">' + fmt((running ? t.minutes : focusChoice.minutes) * 60) + "</div></div>" +
-      (running ?
-        '<p>تدرس الآن: <b>' + esc(t.subject) + '</b></p><button class="btn secondary" data-action="stopTimer">إنهاء مبكر</button>' :
-        '<div class="chips">' + [5, 10, 15, 25, 40].map(m => '<button class="chip' + (m === focusChoice.minutes ? " sel" : "") + '" data-action="setMin" data-m="' + m + '">' + m + " د</button>").join("") + "</div><br>" +
-        '<div class="chips">' + subs.map(s => '<button class="chip' + (s === focusChoice.subject ? " sel" : "") + '" data-action="setSub" data-s="' + esc(s) + '">' + esc(s) + "</button>").join("") + "</div><br>" +
-        '<button class="btn big good block" data-action="startTimer">ابدأ ▶</button>') +
-      "</div>" +
-      '<div class="card"><h3>💡 نصائح للتركيز</h3><ul class="list-plain small">' +
+    if (!focusChoice.subject || !subs.includes(focusChoice.subject)) focusChoice.subject = subs[0];
+    if (t && t.end > Date.now()) {
+      const line = FOCUS_LINES[Math.floor((Date.now() - (t.end - t.minutes * 60000)) / 120000) % FOCUS_LINES.length];
+      return '<section class="focus-full center"><p class="muted">تدرس الآن</p><h2>' + esc(t.subject) + "</h2>" +
+        ringHTML(fmt(t.minutes * 60)) +
+        '<p class="focus-line">' + line + "</p>" +
+        '<p class="small muted">أبعِد الهاتف قليلاً — سننبّهك عند الانتهاء.</p>' +
+        '<button class="linkbtn" data-action="stopTimer">إنهاء مبكر</button></section>';
+    }
+    return '<section class="card center"><h2>⏱️ جلسة تركيز</h2>' +
+      '<p class="muted small">اختر المادة والمدة. كل دقيقة = 2 ⭐</p>' +
+      ringHTML(fmt(focusChoice.minutes * 60)) +
+      '<div class="stack"><div class="field-label">المدة</div><div class="chips">' + [5, 10, 15, 25, 40].map(m => '<button class="chip' + (m === focusChoice.minutes ? " sel" : "") + '" data-action="setMin" data-m="' + m + '" aria-pressed="' + (m === focusChoice.minutes) + '">' + m + " د</button>").join("") + "</div>" +
+      '<div class="field-label">المادة</div><div class="chips">' + subs.map(x => '<button class="chip' + (x === focusChoice.subject ? " sel" : "") + '" data-action="setSub" data-s="' + esc(x) + '" aria-pressed="' + (x === focusChoice.subject) + '">' + esc(x) + "</button>").join("") + "</div>" +
+      '<button class="btn big good block" data-action="startTimer">▶ ابدأ</button></div></section>' +
+      '<details class="card tips"><summary><b>💡 نصائح للتركيز</b></summary><ul class="list-plain small">' +
       "<li>ابدأ بـ 5 أو 10 دقائق إذا كنت بعيداً عن الدراسة — هذا طبيعي جداً.</li>" +
-      "<li>بعد كل جلسة خذ استراحة 5 دقائق: قم، اشرب ماء، تحرّك.</li>" +
+      "<li>بعد كل جلسة خذ استراحة 5 دقائق: قم، تحرّك، وتنفّس.</li>" +
       "<li>اكتب أي فكرة مشتّتة على ورقة جانبية وارجع لها لاحقاً.</li>" +
-      "<li>إذا انقطعت الكهرباء أو النت، المؤقت يكمل ويحفظ تقدّمك.</li></ul></div>";
+      "<li>إذا انقطعت الكهرباء أو النت، المؤقت يكمل ويحفظ تقدّمك.</li></ul></details>";
   }
   function fmt(sec) {
     sec = Math.max(0, Math.ceil(sec));
     return String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0");
   }
-  function startTimer(minutes, subject, force) {
+  function startTimer(minutes, subject, force, chId) {
     if (!force && S.timer && S.timer.end > Date.now()) {
       askConfirm("⏱️", "لديك جلسة تركيز جارية", "هل تريد إلغاءها وبدء جلسة جديدة؟ (لن تُحسب الجلسة الحالية)", "ابدأ جلسة جديدة",
-        () => startTimer(minutes, subject, true));
+        () => startTimer(minutes, subject, true, chId));
       return;
     }
-    S.timer = { end: Date.now() + minutes * 60000, minutes, subject };
+    S.timer = { end: Date.now() + minutes * 60000, minutes, subject, chId: chId || null };
     save();
     view = "focus";
     render();
@@ -696,6 +836,7 @@
     clearInterval(timerInt);
     S.timer = null;
     document.title = "رحلة العودة";
+    document.body.classList.remove("focus-run");
     if (!t) return;
     const rec = dayRec();
     rec.focus += t.minutes;
@@ -704,11 +845,20 @@
     S.sessions++;
     save();
     beep();
-    addXP(t.minutes * 2, "جلسة تركيز مكتملة");
-    confetti();
-    showModal("🧠", "أنهيت " + t.minutes + " دقيقة تركيز في " + t.subject + "!",
-      "خذ استراحة 5 دقائق الآن: قم، اشرب ماء، وتنفّس. ثم عد للجولة التالية إذا أردت.");
+    let earned = t.minutes * 2;
+    addXP(earned);
+    // الجلسة بدأت من تحدٍّ؟ نُنجزه تلقائياً
+    let chDone = false;
+    if (t.chId && S.daily && S.daily.date === today()) {
+      const ch = S.daily.list.find(c => c.id === t.chId && !c.done);
+      if (ch) { completeChallenge(ch); earned += ch.xp; chDone = true; }
+    }
+    const next = S.daily && S.daily.date === today() ? S.daily.list.find(c => !c.done) : null;
     if (view === "focus") render();
+    celebrate("🧠", "أحسنت! " + arMins(t.minutes) + " تركيز",
+      "+" + earned + " ⭐" + (chDone ? " · وأنجزت التحدي ✔" : "") + ". خذ استراحة 5 دقائق: قم، تحرّك، وتنفّس.",
+      (next ? '<button class="btn block" data-action="goNext">👉 التالي: ' + esc(next.text.length > 38 ? next.text.slice(0, 38) + "…" : next.text) + "</button><br>" : "") +
+      '<button class="btn ghost block" data-action="closeModal">🌿 استراحة</button>');
   }
 
   /* ---------- الألعاب ---------- */
@@ -721,6 +871,7 @@
     else { markActive(); save(); toast("وصلت لحد نقاط الألعاب اليوم — نقاط الدراسة أهم 😉"); }
   }
   let game = null;
+  const gameHead = (title, right) => '<div class="game-head"><button class="icon-x" data-action="exitGame" aria-label="خروج من اللعبة">✕</button><b class="grow">' + title + "</b>" + (right || "") + "</div>";
 
   function viewGames() {
     if (game && game.type === "math") return viewMath();
@@ -741,7 +892,8 @@
   }
 
   function mathQuestion() {
-    const L = levelInfo(S.xp).level;
+    // الصعوبة تتبع مستواك ورقمك القياسي
+    const L = Math.max(levelInfo(S.xp).level, 1 + Math.floor((S.best.math || 0) / 4));
     const max = 10 + L * 5;
     const ops = L < 3 ? ["+", "-"] : L < 5 ? ["+", "-", "×"] : ["+", "-", "×", "÷"];
     const op = ops[Math.floor(Math.random() * ops.length)];
@@ -762,7 +914,9 @@
         "<p>إجابات صحيحة: <b>" + g.score + "</b> · خاطئة: " + g.wrong + "</p>" +
         '<button class="btn" data-action="startMath">مرة أخرى</button> <button class="btn secondary" data-action="exitGame">رجوع</button></div>';
     }
-    return '<div class="card center"><div class="row"><span class="grow">✔ ' + g.score + '</span><b id="mathTime">' + Math.max(0, Math.ceil((g.end - Date.now()) / 1000)) + "</b> ث</div>" +
+    const left = Math.max(0, (g.end - Date.now()) / 1000);
+    return '<div class="card center">' + gameHead("⚡ سباق الأرقام", '<span class="score">✔ ' + g.score + '</span><span class="muted"><b id="mathTime">' + Math.ceil(left) + "</b> ث</span>") +
+      '<div class="tbar" aria-hidden="true"><i style="width:' + (left / 60 * 100) + "%;animation-duration:" + left + 's"></i></div>' +
       '<div class="game-q">' + g.q.text + " = ?</div>" +
       '<div class="answers">' + g.q.opts.map(o => '<button class="btn secondary" data-action="mathAns" data-v="' + o + '">' + o + "</button>").join("") + "</div></div>";
   }
@@ -798,9 +952,11 @@
       return '<div class="card center"><div style="font-size:3rem">🃏</div><h2>أحسنت!</h2><p>أنهيتها في <b>' + g.tries + "</b> محاولة</p>" +
         '<button class="btn" data-action="startMemory">مرة أخرى</button> <button class="btn secondary" data-action="exitGame">رجوع</button></div>';
     }
-    return '<div class="card"><div class="row"><h3 class="grow">🃏 لعبة الذاكرة</h3><span>المحاولات: ' + g.tries + "</span></div>" +
+    const left = g.cards.filter(c => !c.matched).length / 2;
+    return '<div class="card">' + gameHead("🃏 لعبة الذاكرة", '<span class="muted small">محاولات ' + g.tries + " · باقي " + left + " أزواج</span>") +
       '<div class="memory-grid">' + g.cards.map(c =>
-        '<button class="mem-card' + (c.open ? " open" : "") + (c.matched ? " matched" : "") + '" data-action="memFlip" data-i="' + c.i + '" aria-label="بطاقة">' + c.e + "</button>").join("") +
+        '<button class="mem-card' + (c.open ? " open" : "") + (c.matched ? " matched" : "") + '" data-action="memFlip" data-i="' + c.i + '" aria-label="' +
+        (c.matched ? "مطابقة: " + c.e : c.open ? "مفتوحة: " + c.e : "بطاقة مغلقة") + '"><span aria-hidden="true">' + c.e + "</span></button>").join("") +
       "</div></div>";
   }
   function memFlip(i) {
@@ -833,12 +989,15 @@
   function viewJourney() {
     const st = stats();
     const next = STAGES[st.stage] || null;
-    const stages = STAGES.map(s =>
-      '<div class="stage ' + (s.id < st.stage ? "passed" : s.id === st.stage ? "current" : "locked") + '">' +
-      '<div class="icon">' + (s.id <= st.stage ? s.icon : "🔒") + "</div>" +
-      '<div class="grow"><b>' + s.id + ". " + s.name + "</b>" + (s.id === st.stage ? ' <span class="tag">أنت هنا</span>' : "") +
-      '<div class="small muted">' + s.desc + "</div>" +
-      '<div class="small muted">يبدأ بعد ' + s.minDays + " يوم دراسة · جلسات بطول " + Math.round(s.ratio * 100) + "٪ من وقتك اليومي</div></div></div>").join("");
+    const days = arDays;
+    const stages = STAGES.map(s => {
+      const state = s.id < st.stage ? "passed" : s.id === st.stage ? "current" : "locked";
+      return '<div class="stage ' + state + '">' +
+        '<div class="icon" aria-hidden="true">' + (state === "passed" ? "✔" : state === "current" ? s.icon : "🔒") + "</div>" +
+        '<div class="grow"><b>' + s.name + "</b>" + (state === "current" ? ' <span class="tag">أنت هنا</span>' : "") +
+        (state === "current" ? '<div class="small muted">' + s.desc + "</div>" : "") +
+        '<div class="small muted">' + (state === "passed" ? "✔ أنجزتها" : state === "current" ? (next ? "باقي " + days(next.minDays - st.activeDays) + " للمرحلة التالية" : "أعلى مرحلة 🏆") : "🔒 بعد " + days(s.minDays - st.activeDays)) + "</div></div></div>";
+    }).join("");
 
     // الأوسمة المكتسبة أولاً، ثم أقرب 3 غير مكتسبة، والباقي مطوي
     const sortedB = BADGES.filter(b => S.badges.includes(b.id)).concat(BADGES.filter(b => !S.badges.includes(b.id)));
@@ -854,16 +1013,16 @@
       '<li><span class="small muted">' + esc(j.date) + "</span><br>" + esc(j.text) + "</li>").join("");
 
     return '<div class="card"><h2>🗺️ رحلة العودة</h2>' +
-      '<p class="muted small">أيام دراستك حتى الآن: <b>' + st.activeDays + "</b> · أفضل سلسلة: <b>" + st.bestStreak + "</b> يوم</p>" +
+      '<p class="muted small">درست حتى الآن <b>' + arDays(st.activeDays) + "</b> · أفضل سلسلة: <b>" + arDays(st.bestStreak) + "</b></p>" +
       (next ? '<div class="progress"><div style="width:' + Math.round((st.activeDays - st.stageObj.minDays) / (next.minDays - st.stageObj.minDays) * 100) + '%"></div></div>' +
-        '<p class="small muted">باقي ' + (next.minDays - st.activeDays) + " يوم للوصول إلى «" + next.name + "»</p>" : "<p>🏆 وصلت لأعلى مرحلة!</p>") +
+        '<p class="small muted">باقي ' + arDays(next.minDays - st.activeDays) + " للوصول إلى «" + next.name + "»</p>" : "<p>🏆 وصلت لأعلى مرحلة!</p>") +
       '<div class="journey">' + stages + "</div></div>" +
       '<div class="card"><h3>🏅 الأوسمة (' + S.badges.length + " / " + BADGES.length + ')</h3><div class="badges">' + badgesShown + "</div>" +
       (badgesMore ? '<details class="more"><summary>عرض كل الأوسمة</summary><div class="badges">' + badgesMore + "</div></details>" : "") + "</div>" +
       '<div class="card"><h3>📓 يومياتي</h3>' + (journal ? '<ul class="list-plain">' + journal + "</ul>" : '<p class="muted small">لم تكتب أي تأمّل بعد. اكتب أول تأمّل من صفحة التحديات.</p>') + "</div>" +
       levelsCard() +
-      '<button class="btn accent block" data-action="share">📸 شارك إنجازك</button><br><br>' +
-      '<button class="btn secondary block" data-action="go" data-v="settings">⚙️ الإعدادات · 💬 رأيك · 🤝 تواصل</button>';
+      '<div class="stack"><button class="btn block" data-action="share">📸 شارك إنجازك</button>' +
+      '<button class="btn ghost block" data-action="openSettings">⚙️ الإعدادات · 💬 رأيك · 🤝 تواصل</button></div>';
   }
 
   /* ---------- الإعدادات ---------- */
@@ -878,20 +1037,21 @@
       '<label for="obGoal">هدفي</label><input type="text" id="obGoal" maxlength="80" value="' + esc(p.goal) + '">' +
       "<label>موعد دراستي</label><div class=\"chips\">" +
       ["بعد الفجر", "بعد الإفطار", "بعد العصر", "بعد المغرب", "قبل النوم"].map(w => '<button type="button" class="chip' + (p.when === w ? " sel" : "") + '" data-action="obWhen" data-w="' + w + '">' + w + "</button>").join("") + "</div>" +
-      '<br><br><button class="btn block" data-action="saveSettings">حفظ</button></div>' +
+      '<div class="stack"><button class="btn block" data-action="saveSettings">حفظ</button></div></div>' +
       '<div class="card"><h3>🎨 المظهر</h3><p class="small muted">«تلقائي» يتبع إعدادات جهازك. الوضع الداكن مريح للعين ليلاً ويوفّر البطارية.</p>' +
       '<div class="seg" role="radiogroup" aria-label="المظهر">' +
       [["auto", "🌓 تلقائي"], ["light", "☀️ فاتح"], ["dark", "🌙 داكن"]].map(t =>
         '<button role="radio" aria-checked="' + (Theme.get() === t[0]) + '" class="' + (Theme.get() === t[0] ? "sel" : "") + '" data-action="setTheme" data-t="' + t[0] + '">' + t[1] + "</button>").join("") +
       "</div></div>" +
       '<div class="card"><h3>💾 نسخة احتياطية</h3><p class="small muted">بياناتك محفوظة على جهازك فقط. انسخها احتياطياً لتنقلها لجهاز آخر.</p>' +
-      '<div class="grid-2"><button class="btn secondary" data-action="export">تصدير</button>' +
-      '<button class="btn secondary" data-action="import">استيراد</button></div>' +
+      '<div class="grid-2"><button class="btn ghost" data-action="export">⬆️ تصدير</button>' +
+      '<button class="btn ghost" data-action="import">⬇️ استيراد</button></div>' +
       '<input type="file" id="importFile" accept="application/json" hidden></div>' +
       feedbackCard() +
       contactCard() +
-      '<div class="card"><h3>⚠️ البدء من جديد</h3><button class="btn accent block" data-action="reset">مسح كل البيانات</button></div>' +
-      '<button class="btn secondary block" data-action="go" data-v="home">رجوع للرئيسية</button>';
+      '<details class="card danger-zone"><summary><b>⚠️ المنطقة الخطرة</b></summary><p class="small muted">مسح كل تقدّمك نهائياً. صدّر نسخة احتياطية أولاً.</p>' +
+      '<button class="btn outline-danger block" data-action="reset">مسح كل البيانات</button></details>' +
+      '<button class="btn ghost block" data-action="go" data-v="home">→ رجوع للرئيسية</button>';
   }
 
   /* ---------- مهمة «أنا تايه» ---------- */
@@ -927,11 +1087,12 @@
       subs.map(sb => '<div class="level-row"><b id="lv-' + hashStr(sb) + '">' + esc(sb) + '</b><div class="level-btns" role="radiogroup" aria-labelledby="lv-' + hashStr(sb) + '">' +
         LEVELS.map((l, i) => '<button role="radio" aria-checked="' + (assessDraft.levels[sb] === i + 1) + '" class="' + (assessDraft.levels[sb] === i + 1 ? "sel" : "") + '" data-action="setLevel" data-s="' + esc(sb) + '" data-v="' + (i + 1) + '" aria-label="' + l.t + '"><span aria-hidden="true">' + l.e + "</span><small>" + l.t + "</small></button>").join("") +
         "</div>" +
-        '<input type="text" class="lesson-input" data-s="' + esc(sb) + '" maxlength="60" placeholder="آخر درس تتذكره في ' + esc(sb) + ' (اختياري)" value="' + esc((assessDraft.lessons || {})[sb] || "") + '">' +
+        '<label class="lesson-label" for="ls-' + hashStr(sb) + '">آخر درس تتذكره <span class="muted">(اختياري)</span></label>' +
+        '<input type="text" id="ls-' + hashStr(sb) + '" class="lesson-input" data-s="' + esc(sb) + '" maxlength="60" placeholder="مثلاً: الكسور" value="' + esc((assessDraft.lessons || {})[sb] || "") + '">' +
         "</div>").join("") +
       "</div>" +
       '<button class="btn big block" data-action="saveAssess"' + (done ? "" : " disabled") + ">" + (done ? (first ? "احفظ وابدأ الرحلة ✨" : "احفظ التقييم ✔") : "قيّم كل المواد (" + rated + "/" + subs.length + ")" + (assessDraft.away === null ? " وحدّد مدة الغياب" : "")) + "</button>" +
-      (first ? "" : '<br><br><button class="btn secondary block" data-action="cancelAssess">إلغاء</button>');
+      (first ? "" : '<div class="stack"><button class="btn ghost block" data-action="cancelAssess">إلغاء</button></div>');
   }
   function saveAssess() {
     const first = !S.assess.length;
@@ -948,15 +1109,11 @@
     view = "home";
     render();
     const sorted = subs.slice().sort((a, b) => levels[b] - levels[a]);
-    const strong = sorted[0], weak = sorted[sorted.length - 1];
+    const weak = sorted[sorted.length - 1];
     if (first) {
       addXP(20, "أكملت التقييم");
       const away = S.assess[0].away;
-      showModal("✨", "مرحباً " + S.profile.name + "!",
-        (away >= 3 ? "غبت فترة طويلة، وهذا لا يقلل منك أبداً. " : "") +
-        "سنبدأ بمادتك الأقوى «" + strong + "» لنكسب الحماس" +
-        (weak !== strong ? "، ثم نعطي «" + weak + "» اهتماماً أكبر تدريجياً" : "") +
-        ". ما عليك اليوم إلا أن تنجز تحدياً واحداً!");
+      showModal("✨", "مرحباً " + S.profile.name + "!", welcomePlan(levels, away));
     } else {
       if (!lastDate || dayNumber(today()) - dayNumber(lastDate) >= 7) addXP(15, "تقييم جديد");
       showModal("📊", "تم حفظ تقييمك", "شاهد تطوّرك في صفحة «رحلتي». المادة التي تحتاج تركيزاً أكثر الآن: «" + weak + "».");
@@ -1045,34 +1202,50 @@
   let cardsFilter = "all";
   const dueCards = () => S.cards.filter(c => c.due <= today());
 
+  let cardFormOpen = false;
+  function relDay(key) {
+    const d = dayNumber(key) - dayNumber(today());
+    return d <= 0 ? "اليوم" : d === 1 ? "غداً" : d === 2 ? "بعد يومين" : "بعد " + d + (d <= 10 ? " أيام" : " يوماً");
+  }
+  const HOW_CARDS = '<details class="how"><summary>كيف تعمل البطاقات؟</summary><p class="small muted">كل ما عرفت البطاقة تنتقل لصندوق أعلى وتتأخر مراجعتها (من يوم حتى 30 يوماً)، وإذا نسيتها ترجع للبداية. هكذا تثبت المعلومة لمدة طويلة. كن صادقاً: النقاط على المراجعة نفسها، لا على الإجابة.</p></details>';
   function viewCards() {
     if (review) return viewReview();
     const due = dueCards();
     const subs = S.profile.subjects.length ? S.profile.subjects : ["عام"];
+    const form = '<section class="card" id="cardForm"><h3>➕ بطاقة جديدة</h3>' +
+      '<label for="cardSub">المادة</label><select id="cardSub">' + subs.map(x => "<option" + (x === lastCardSub ? " selected" : "") + ">" + esc(x) + "</option>").join("") + "</select>" +
+      '<label for="cardQ">السؤال</label><textarea id="cardQ" dir="auto" maxlength="300" style="min-height:64px" placeholder="مثلاً: ما قانون نيوتن الثاني؟"></textarea>' +
+      '<label for="cardA">الجواب</label><textarea id="cardA" dir="auto" maxlength="500" style="min-height:64px" placeholder="القوة = الكتلة × التسارع"></textarea>' +
+      '<div class="stack"><button class="btn block" data-action="addCard">أضف البطاقة (+5 ⭐)</button>' +
+      (S.cards.length ? '<button class="linkbtn" data-action="closeCardForm">إغلاق</button>' : "") + "</div></section>";
+    if (!S.cards.length) {
+      return '<section class="card center"><div class="empty-emoji" aria-hidden="true">🗂️</div><h2>بطاقاتي</h2>' +
+        '<p class="muted">اكتب سؤالاً من درسك وجوابه، والتطبيق يذكّرك بمراجعته في الوقت المناسب حتى يثبت في ذاكرتك.</p>' +
+        (cardFormOpen ? "" : '<button class="btn big block" data-action="openCardForm">➕ اصنع أول بطاقة</button>') + HOW_CARDS + "</section>" +
+        (cardFormOpen ? form : "");
+    }
     const counts = [1, 2, 3, 4, 5, 6].map(b => S.cards.filter(c => c.box === b).length);
+    const mastered = counts[4] + counts[5];
+    const nextDue = S.cards.map(c => c.due).sort()[0];
     const list = S.cards.filter(c => cardsFilter === "all" || c.subject === cardsFilter).slice().reverse();
-    const usedSubs = subs.filter(s => S.cards.some(c => c.subject === s));
-    return '<div class="card"><h2>🗂️ بطاقاتي</h2>' +
-      '<p class="muted small">اكتب سؤالاً من درسك وجوابه. التطبيق يذكّرك بمراجعة كل بطاقة في الوقت المناسب: كل ما عرفتها تنتقل لصندوق أعلى وتتأخر مراجعتها، وإذا نسيتها ترجع للصندوق الأول. هكذا تثبت المعلومة في ذاكرتك لمدة طويلة. كن صادقاً: النقاط على المراجعة نفسها، لا على الإجابة.</p>' +
-      '<div class="boxes">' + counts.map((n, i) => '<div class="stat"><b>' + n + '</b><span class="small muted">صندوق ' + (i + 1) + "</span></div>").join("") + "</div><br>" +
-      (due.length ? '<button class="btn big good block" data-action="startReview">🔁 راجع الآن (' + due.length + " بطاقة)</button>" :
-        '<p class="center muted">' + (S.cards.length ? "✔ لا بطاقات للمراجعة اليوم. أحسنت!" : "لم تصنع أي بطاقة بعد. ابدأ بالأولى 👇") + "</p>") +
-      "</div>" +
-      '<div class="card"><h3>➕ بطاقة جديدة</h3>' +
-      '<label for="cardSub">المادة</label><select id="cardSub">' + subs.map(s => "<option" + (s === lastCardSub ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select>" +
-      '<label for="cardQ">السؤال (الوجه الأمامي)</label><textarea id="cardQ" maxlength="300" style="min-height:60px" placeholder="مثلاً: ما قانون نيوتن الثاني؟"></textarea>' +
-      '<label for="cardA">الجواب (الوجه الخلفي)</label><textarea id="cardA" maxlength="500" style="min-height:60px" placeholder="القوة = الكتلة × التسارع"></textarea><br><br>' +
-      '<button class="btn block" data-action="addCard">أضف البطاقة (+5 ⭐)</button></div>' +
-      (S.cards.length ? '<div class="card"><h3>كل البطاقات (' + S.cards.length + ")</h3>" +
-        '<div class="chips" style="justify-content:flex-start">' +
+    const usedSubs = subs.filter(x => S.cards.some(c => c.subject === x));
+    return '<section class="card"><h2>🗂️ بطاقاتي</h2>' +
+      '<div class="mastery" role="img" aria-label="' + S.cards.length + " بطاقة، منها " + mastered + ' متقنة">' +
+      counts.map((n, i) => n ? '<i class="b' + (i + 1) + '" style="flex:' + n + '" title="صندوق ' + (i + 1) + ": " + n + '"></i>' : "").join("") + "</div>" +
+      '<div class="row small muted mastery-legend"><span class="grow">🌱 جديدة</span><span>' + mastered + " / " + S.cards.length + " متقنة 🎓</span></div>" +
+      '<div class="stack">' + (due.length ? '<button class="btn big good block" data-action="startReview">🔁 راجع الآن · ' + due.length + " بطاقة</button>" :
+        '<p class="center muted">✔ لا مراجعة اليوم — القادمة ' + relDay(nextDue) + "</p>") + "</div></section>" +
+      (cardFormOpen ? form : '<button class="btn ghost block" data-action="openCardForm">➕ بطاقة جديدة</button>') +
+      '<section class="card"><h3>كل البطاقات (' + S.cards.length + ")</h3>" +
+      (usedSubs.length > 1 ? '<div class="chips" style="justify-content:flex-start">' +
         ['<button class="chip' + (cardsFilter === "all" ? " sel" : "") + '" data-action="cardFilter" data-s="all">الكل</button>']
-          .concat(usedSubs.map(s => '<button class="chip' + (cardsFilter === s ? " sel" : "") + '" data-action="cardFilter" data-s="' + esc(s) + '">' + esc(s) + "</button>")).join("") +
-        '</div><ul class="list-plain">' + list.map(c =>
-          '<li><div class="row"><b class="grow">' + esc(c.q) + "</b>" +
-          '<button class="chip small" data-action="delCard" data-id="' + esc(c.id) + '" aria-label="حذف">🗑️</button></div>' +
-          '<div class="muted small">' + esc(c.a) + "</div>" +
-          '<span class="tag">' + esc(c.subject) + '</span><span class="tag">📦 ' + (+c.box || 1) + '</span><span class="tag">' + (c.due <= today() ? "للمراجعة اليوم" : "المراجعة: " + esc(c.due)) + "</span></li>").join("") +
-        "</ul></div>" : "");
+          .concat(usedSubs.map(x => '<button class="chip' + (cardsFilter === x ? " sel" : "") + '" data-action="cardFilter" data-s="' + esc(x) + '">' + esc(x) + "</button>")).join("") + "</div>" : "") +
+      '<ul class="list-plain">' + list.map(c =>
+        '<li><div class="row"><b class="grow" dir="auto">' + esc(c.q) + "</b>" +
+        '<button class="icon-x" data-action="delCard" data-id="' + esc(c.id) + '" aria-label="حذف البطاقة">🗑️</button></div>' +
+        '<div class="muted small" dir="auto">' + esc(c.a) + "</div>" +
+        '<div class="meta">' + esc(c.subject) + " · 📦 " + (+c.box || 1) + " · " + (c.due <= today() ? "للمراجعة اليوم" : "المراجعة " + relDay(c.due)) + "</div></li>").join("") +
+      "</ul>" + HOW_CARDS + "</section>";
   }
   let lastCardSub = null;
 
@@ -1080,19 +1253,24 @@
     const r = review;
     const c = S.cards.find(x => x.id === r.queue[0]);
     if (!c) {
-      return '<div class="card center"><div style="font-size:3rem">🎉</div><h2>انتهت المراجعة!</h2>' +
-        "<p>راجعت <b>" + r.done + "</b> بطاقة، وعرفت <b>" + r.right + "</b> منها من أول مرة.</p>" +
-        '<button class="btn" data-action="endReview">رجوع للبطاقات</button></div>';
+      return '<section class="card center"><div class="empty-emoji" aria-hidden="true">🎉</div><h2>انتهت المراجعة!</h2>' +
+        '<p class="big-stat">راجعت ' + r.done + " · ⭐+" + (r.xp || 0) + "</p>" +
+        '<p class="muted small">عرفت ' + r.right + " من أول مرة. البطاقات التي نسيتها ستعود غداً.</p>" +
+        '<button class="btn block" data-action="endReview">تمام</button></section>';
     }
-    return '<div class="card center"><div class="row"><span class="tag">' + esc(c.subject) + '</span><span class="grow"></span><span class="muted small">باقي ' + r.queue.length + "</span></div>" +
-      '<div class="flash">' + esc(c.q) + "</div>" +
+    const total = r.done + r.queue.length;
+    return '<section class="card center review">' +
+      '<div class="game-head"><button class="icon-x" data-action="endReview" aria-label="إنهاء المراجعة">✕</button>' +
+      '<div class="progress grow"><div style="width:' + Math.round(r.done / total * 100) + '%"></div></div><span class="muted small">' + r.queue.length + "</span></div>" +
+      '<span class="tag">' + esc(c.subject) + "</span>" +
+      '<div class="flash" dir="auto">' + esc(c.q) + "</div>" +
       (r.show ?
-        '<div class="flash answer">' + esc(c.a) + "</div>" +
-        '<p class="small muted">كن صادقاً مع نفسك 😉</p>' +
-        '<div class="grid-2"><button class="btn accent big" data-action="grade" data-ok="0">✖ ما عرفتها</button>' +
-        '<button class="btn good big" data-action="grade" data-ok="1">✔ عرفتها</button></div>' :
-        '<p class="small muted">حاول تتذكّر الجواب في عقلك أولاً…</p><button class="btn big block" data-action="showAnswer">أظهر الجواب 👀</button>') +
-      '<br><button class="btn secondary" data-action="endReview">إنهاء</button></div>';
+        '<div class="flash answer" dir="auto">' + esc(c.a) + "</div>" +
+        '<div class="grid-2"><button class="btn good big" data-action="grade" data-ok="1">✔ عرفتها</button>' +
+        '<button class="btn outline big" data-action="grade" data-ok="0">✖ ما عرفتها</button></div>' +
+        '<p class="small muted">كن صادقاً — النقاط على المراجعة نفسها 😉</p>' :
+        '<button class="btn big block" data-action="showAnswer">👀 أظهر الجواب</button><p class="small muted">حاول تتذكّر الجواب أولاً…</p>') +
+      "</section>";
   }
   function gradeCard(ok) {
     const r = review;
@@ -1105,7 +1283,7 @@
     r.show = false;
     // النقاط على المراجعة الصادقة (عرفتها أو لا) حتى لا نكافئ الضغط على «عرفتها» دون تذكّر
     // وبحد أقصى 60 نقطة مراجعة يومياً
-    const reviewXP = () => { rec.reviewXp = (rec.reviewXp || 0) + 2; if (rec.reviewXp <= 60) addXP(2); else markActive(); };
+    const reviewXP = () => { rec.reviewXp = (rec.reviewXp || 0) + 2; if (rec.reviewXp <= 60) { addXP(2); r.xp = (r.xp || 0) + 2; } else markActive(); };
     if (ok && r.retried.includes(id)) {
       // نسيتها ثم تذكرتها في نفس الجلسة: تبقى في الصندوق 1 وتعود غداً
       markActive();
@@ -1120,7 +1298,6 @@
       markActive();
     }
     save();
-    if (!r.queue.length && r.done) toast("+" + Math.min(r.done * 2, 60) + " ⭐ على الصدق والمراجعة");
     checkBadges();
     render();
   }
@@ -1144,13 +1321,14 @@
         '<button class="btn" data-action="startQuiz">مرة أخرى</button> <button class="btn secondary" data-action="exitGame">رجوع</button></div>';
     }
     const q = g.qs[g.i];
-    return '<div class="card"><div class="row"><span class="tag">' + esc(q.s) + '</span><span class="grow"></span><span class="muted">' + (g.i + 1) + " / 10 · ✔ " + g.score + "</span></div>" +
-      '<div class="progress" style="margin:8px 0 14px"><div style="width:' + (g.i / 10 * 100) + '%"></div></div>' +
+    return '<div class="card">' + gameHead("❓ " + esc(q.s), '<span class="muted small">' + (g.i + 1) + " / 10 · ✔ " + g.score + "</span>") +
+      '<div class="progress" style="margin:4px 0 14px"><div style="width:' + (g.i / 10 * 100) + '%"></div></div>' +
       '<h3 style="margin-bottom:14px">' + esc(q.q) + "</h3>" +
       '<div class="opts">' + q.order.map(idx => {
         let cls = "opt";
         if (g.picked !== null) { if (idx === q.a) cls += " right"; else if (idx === g.picked) cls += " wrong"; }
-        return '<button class="' + cls + '" data-action="quizAns" data-i="' + idx + '"' + (g.picked !== null ? " disabled" : "") + ">" + esc(q.o[idx]) + "</button>";
+        const mark = g.picked === null ? "" : idx === q.a ? "✔ " : idx === g.picked ? "✖ " : "";
+        return '<button class="' + cls + '" data-action="quizAns" data-i="' + idx + '"' + (g.picked !== null ? " disabled" : "") + ">" + mark + esc(q.o[idx]) + "</button>";
       }).join("") + "</div>" +
       (g.picked !== null && g.picked !== q.a ? '<p class="small" style="margin:12px 0 0">✅ الإجابة الصحيحة: <b>' + esc(q.o[q.a]) + "</b></p>" +
         (g.added && g.added.includes(g.i) ? '<p class="small muted">أضيفت لبطاقاتك ✔</p>' : '<button class="chip small" style="margin-top:8px" data-action="quizToCard">➕ أضفها لبطاقاتي للمراجعة</button>') : "") +
@@ -1245,6 +1423,7 @@
     const el = e.target.closest("[data-action]");
     if (!el) return;
     const a = el.dataset.action;
+    tapEl = el;
     switch (a) {
       case "closeModal": closeModal(); break;
       case "go":
@@ -1257,6 +1436,7 @@
         const i = arr.indexOf(s);
         if (i >= 0) arr.splice(i, 1); else arr.push(s);
         el.classList.toggle("sel");
+        el.setAttribute("aria-pressed", String(i < 0));
         break;
       }
       case "obStart": {
@@ -1302,6 +1482,7 @@
         const txt = ($("#reflectText").value || "").trim();
         if (txt.length < 5) { toast("اكتب جملة على الأقل 🙂"); return; }
         S.journal.push({ date: today(), text: txt });
+        reflectOpen = false;
         dayRec().reflected = true;
         save();
         addXP(15, "تأمّل رائع");
@@ -1330,13 +1511,12 @@
         S.lostDone++;
         save();
         addXP(20, "بدأت فعلاً!");
-        confetti();
         break;
       }
       case "setMin": focusChoice.minutes = +el.dataset.m; render(); break;
       case "setSub": focusChoice.subject = el.dataset.s; render(); break;
       case "startTimer": startTimer(focusChoice.minutes, focusChoice.subject); break;
-      case "focusFor": focusChoice = { minutes: Math.min(60, +el.dataset.m), subject: el.dataset.s }; startTimer(focusChoice.minutes, focusChoice.subject); break;
+      case "focusFor": focusChoice = { minutes: Math.min(60, +el.dataset.m), subject: el.dataset.s }; startTimer(focusChoice.minutes, focusChoice.subject, false, el.dataset.id); break;
       case "stopTimer": {
         if (!S.timer) return;
         const doneMin = Math.floor((S.timer.minutes * 60000 - (S.timer.end - Date.now())) / 60000);
@@ -1387,6 +1567,7 @@
         const q = ($("#cardQ").value || "").trim(), ans = ($("#cardA").value || "").trim();
         if (!q || !ans) { toast("اكتب السؤال والجواب 🙂"); return; }
         lastCardSub = $("#cardSub").value;
+        cardFormOpen = true;
         S.cards.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), subject: lastCardSub, q, a: ans, box: 1, due: today() });
         const rec = dayRec();
         rec.cardsAdded = (rec.cardsAdded || 0) + 1;
@@ -1405,6 +1586,23 @@
       case "grade": gradeCard(el.dataset.ok === "1"); break;
       case "endReview": review = null; render(); break;
       case "share": shareProgress(); break;
+      case "obNext": obNext(); break;
+      case "obBack": { const nm = $("#obName"); if (nm) ob.name = nm.value.trim(); ob.step = Math.max(0, ob.step - 1); renderOnboarding(); break; }
+      case "obSet": {
+        const k = el.dataset.k, v = el.dataset.v;
+        if (k === "lvl") { const steps = obSteps(); ob.levels[onboardSel[+steps[ob.step].split(":")[1]]] = +v; }
+        else if (k === "minutes" || k === "away") ob[k] = +v;
+        else ob[k] = (ob[k] === v && k === "when") ? "" : v;
+        renderOnboarding();
+        if (el.dataset.auto) setTimeout(obNext, reducedMotion() ? 0 : 220);
+        break;
+      }
+      case "streakSheet": streakSheet(); break;
+      case "goNext": closeModal(); view = "home"; render(); break;
+      case "openReflect": reflectOpen = true; render(); setTimeout(() => { const f = $("#reflectText"); if (f) f.focus(); }, 30); break;
+      case "writeReflect": reflectOpen = true; view = "challenges"; render(); setTimeout(() => { const f = $("#reflectCard"); if (f) f.scrollIntoView({ block: "center" }); const t = $("#reflectText"); if (t) t.focus({ preventScroll: true }); }, 30); break;
+      case "openCardForm": cardFormOpen = true; render(); setTimeout(() => { const f = $("#cardForm"); if (f) f.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" }); const q = $("#cardQ"); if (q) q.focus({ preventScroll: true }); }, 30); break;
+      case "closeCardForm": cardFormOpen = false; render(); break;
       case "restDay": {
         const rec = dayRec();
         rec.rest = true;
@@ -1468,6 +1666,10 @@
     }
   });
 
+  document.addEventListener("keydown", e => {
+    if (e.key === "Enter" && e.target && e.target.id === "obName") { e.preventDefault(); obNext(); }
+  });
+  document.addEventListener("toggle", e => { if (e.target && e.target.id === "progressCard") progressOpen = e.target.open; }, true);
   document.addEventListener("input", e => {
     if (e.target.classList && e.target.classList.contains("lesson-input")) {
       assessDraft.lessons = assessDraft.lessons || {};

@@ -213,6 +213,7 @@
         background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--line);
         transform: translateY(110%); transition: transform .3s ease; }
       .sticky-cta.show { transform: none; }
+      body.sticky-on .nav .btn { display: none; }
       .sticky-cta .btn { width: 100%; }
       footer { padding-bottom: 90px; }
     }
@@ -457,7 +458,11 @@
   (function () {
     var bar = document.getElementById("stickyCta"), hero = document.querySelector(".hero");
     if (!("IntersectionObserver" in window) || !bar || !hero) return;
-    new IntersectionObserver(function (en) { bar.classList.toggle("show", !en[0].isIntersecting); }).observe(hero);
+    new IntersectionObserver(function (en) {
+      var on = !en[0].isIntersecting;
+      bar.classList.toggle("show", on);
+      document.body.classList.toggle("sticky-on", on);
+    }).observe(hero);
   })();
   // ظهور الأقسام عند التمرير
   (function () {

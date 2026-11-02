@@ -1,9 +1,9 @@
 /* Service Worker: يعمل بدون إنترنت ومع النت الضعيف.
    كل ملفات الإصدار الواحد تُخزَّن معاً (لا خلط بين إصدارين)،
    والإصدار الجديد يُفعَّل عندما يضغط المستخدم «حدّث الآن». */
-const CACHE = "rehla-v4";
+const CACHE = "rehla-v5";
 const ASSETS = ["./", "index.html", "styles.css", "theme.js", "data.js", "app.js", "manifest.json",
-  "icon.svg", "icon-192.png", "icon-512.png", "icon-maskable-512.png"];
+  "icon.svg", "icon-192.png"]; // الأيقونات الكبيرة تُخزَّن عند أول طلب لتخفيف أول تحميل
 
 self.addEventListener("install", e => {
   // cache: "reload" يتجاوز كاش المتصفح حتى لا نخزّن ملفات قديمة

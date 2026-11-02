@@ -13,10 +13,10 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🚀 رحلة العودة</div>
+    <div class="brand">🚀 <span class="brand-text">رحلة العودة</span></div>
     <div class="top-stats">
-      <span class="pill" id="streakPill" title="أيام دراستك هذا الأسبوع">📅 0/7</span>
-      <span class="pill" id="xpPill" title="نقاط الخبرة">⭐ 0</span>
+      <button type="button" class="pill" id="streakPill" data-action="streakSheet">🔥 0</button>
+      <span class="pill" id="xpPill" title="نقاطك">⭐ 0</span>
       <button class="icon-btn" id="themeBtn" type="button" aria-label="تبديل الوضع"><span class="ico" aria-hidden="true">🌙</span></button>
       <button class="icon-btn" id="settingsBtn" type="button" data-action="openSettings" aria-label="الإعدادات" title="الإعدادات"><span class="ico" aria-hidden="true">⚙️</span></button>
     </div>
@@ -32,8 +32,8 @@
     <button data-view="journey"><span aria-hidden="true">🗺️</span>رحلتي</button>
   </nav>
 
-  <div id="toast" class="toast" role="status"></div>
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody"><div class="modal-card" id="modalCard"></div></div>
+  <div id="toast" class="toast" role="status"></div>
 
   <script src="data.js"></script>
   <script src="app.js"></script>
