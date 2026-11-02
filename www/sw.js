@@ -1,5 +1,5 @@
 /* Service Worker: يجعل التطبيق يعمل بدون إنترنت ومع النت الضعيف */
-const CACHE = "rehla-v1";
+const CACHE = "rehla-v2";
 const ASSETS = ["./", "index.html", "styles.css", "data.js", "app.js", "manifest.json", "icon.svg", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

@@ -139,6 +139,11 @@
     details[open] summary::after { content: "−"; }
     details p { color: var(--muted); margin: 10px 0 0; }
 
+    .contact { background: var(--card); border: 1px solid var(--line); border-radius: 28px; padding: 32px; display: flex; gap: 24px; align-items: center; box-shadow: var(--shadow); }
+    .contact .avatar { width: 96px; height: 96px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 3rem; background: linear-gradient(135deg, var(--primary), var(--accent)); }
+    .contact .grow { flex: 1; }
+    .muted-l { color: var(--muted); }
+    @media (max-width: 720px) { .contact { flex-direction: column; text-align: center; padding: 24px 18px; } .contact h2 { text-align: center !important; } .contact .cta { justify-content: center; } }
     .quote { text-align: center; font-size: 1.4rem; font-weight: 800; }
     footer { border-top: 1px solid var(--line); padding: 28px 0; text-align: center; color: var(--muted); font-size: .92rem; }
 
@@ -166,6 +171,7 @@
       <a href="#features">الميزات</a>
       <a href="#download">التحميل</a>
       <a href="#faq">أسئلة</a>
+      <a href="#contact">تواصل</a>
       <a class="btn sm" href="app/">ابدأ الآن</a>
     </div>
   </div>
@@ -262,7 +268,10 @@
       <div class="feat"><div class="e">😊</div><h3>يفهم مزاجك</h3><p>يومك صعب؟ تخفّ التحديات. متحمس؟ يظهر لك تحدٍّ إضافي بمكافأة أكبر.</p></div>
       <div class="feat"><div class="e">⏱️</div><h3>مؤقت تركيز</h3><p>جلسات من 5 إلى 40 دقيقة، كل دقيقة = نقطتان، ويكمل حتى لو انقطعت الكهرباء.</p></div>
       <div class="feat"><div class="e">🧠</div><h3>ألعاب تنشيط العقل</h3><p>سباق الأرقام ولعبة الذاكرة — 5 دقائق تجهّز دماغك قبل الدراسة.</p></div>
-      <div class="feat"><div class="e">🏅</div><h3>نقاط وأوسمة ومستويات</h3><p>10 ألقاب و14 وساماً وتحدٍّ أسبوعي كبير، وسلسلة أيام تحفّزك ألا تنقطع.</p></div>
+      <div class="feat"><div class="e">🏅</div><h3>نقاط وأوسمة ومستويات</h3><p>10 ألقاب و18 وساماً وتحدٍّ أسبوعي كبير، وسلسلة أيام تحفّزك ألا تنقطع.</p></div>
+      <div class="feat"><div class="e">🩺</div><h3>تقييم أولي لمستواك</h3><p>دقيقة واحدة تقيّم فيها نفسك في كل مادة، فتُبنى خطتك على مقاسك وترى تطوّرك مع الوقت.</p></div>
+      <div class="feat"><div class="e">🗂️</div><h3>بطاقات المراجعة الذكية</h3><p>اكتب أسئلة من دروسك، والتطبيق يذكّرك بمراجعتها في الوقت المثالي حتى تثبت في ذاكرتك.</p></div>
+      <div class="feat"><div class="e">❓</div><h3>تحدي المعلومات</h3><p>60 سؤالاً في 11 مادة — اختبر معلوماتك بطريقة ممتعة واكسب النقاط.</p></div>
     </div>
   </div>
 </section>
@@ -328,7 +337,25 @@
       <details><summary>هل أحتاج إنشاء حساب؟</summary><p>لا. تكتب اسمك فقط، وكل بياناتك تبقى على جهازك ولا تُرسل لأي مكان.</p></details>
       <details><summary>لمن هذا التطبيق؟</summary><p>لأي طالب — من الابتدائي حتى الجامعة — ابتعد عن الدراسة فترة ويريد أن يعود تدريجياً، أو يريد فقط أن يجعل دراسته ممتعة ومنتظمة.</p></details>
       <details><summary>ماذا لو انقطعت يوماً؟</summary><p>لا مشكلة! تبدأ سلسلة جديدة، وتقدّمك في المستويات والمراحل يبقى محفوظاً. المهم أن تعود.</p></details>
+      <details><summary>كيف أرسل رأيي أو اقتراحي؟</summary><p>من صفحة «رحلتي» داخل التطبيق: قسم «رأيك يهمنا» — قيّم بالنجوم واكتب اقتراحك. أو راسلنا مباشرة على meheba65@gmail.com.</p></details>
       <details><summary>كيف أنقل تقدّمي لجهاز آخر؟</summary><p>من الإعدادات اختر «تصدير» لحفظ ملف نسخة احتياطية، ثم «استيراد» على الجهاز الجديد.</p></details>
+    </div>
+  </div>
+</section>
+
+<section id="contact" style="padding-top:0">
+  <div class="wrap reveal">
+    <div class="contact">
+      <div class="avatar">👩‍🏫</div>
+      <div class="grow">
+        <h2 style="text-align:right;margin-bottom:4px">تواصل معنا</h2>
+        <p style="margin:0 0 4px"><b>هبة أبو اللبن</b> — صاحبة فكرة «رحلة العودة»</p>
+        <p class="muted-l" style="margin:0 0 16px">عندك سؤال، اقتراح، أو تحتاج مساعدة؟ أو بدك تقيّم التطبيق؟ رأيك يهمنا ويساعدنا نطوّره للطلاب.</p>
+        <div class="cta">
+          <a class="btn" href="mailto:meheba65@gmail.com?subject=%D8%B1%D8%AD%D9%84%D8%A9%20%D8%A7%D9%84%D8%B9%D9%88%D8%AF%D8%A9">✉️ meheba65@gmail.com</a>
+          <a class="btn ghost" href="mailto:meheba65@gmail.com?subject=%D8%A7%D9%82%D8%AA%D8%B1%D8%A7%D8%AD%20%D9%84%D8%B1%D8%AD%D9%84%D8%A9%20%D8%A7%D9%84%D8%B9%D9%88%D8%AF%D8%A9">💡 أرسل اقتراحاً</a>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -343,7 +370,8 @@
 
 <footer>
   <div class="wrap">
-    🚀 رحلة العودة — صُنع بحب للطلاب ·
+    🚀 رحلة العودة — فكرة <b>هبة أبو اللبن</b> · صُنع بحب للطلاب ·
+    <a href="mailto:meheba65@gmail.com">تواصل معنا</a> ·
     <a href="https://github.com/abdulrahmanahmedelabed-prog/teacher">الكود مفتوح على GitHub</a>
   </div>
 </footer>

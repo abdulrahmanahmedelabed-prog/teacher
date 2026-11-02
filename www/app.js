@@ -17,6 +17,11 @@
     best: {},               // {math, memory}
     journal: [],            // [{date, text}]
     badges: [],
+    cards: [],              // [{id, subject, q, a, box, due}]
+    assess: [],             // التقييم الأولي ومتابعته: [{date, away, levels:{مادة: 1..5}}]
+    feedback: [],           // [{date, rating, kind, text}]
+    feedbackAsked: false,
+    reviews: 0,
     weeklyClaimed: {},
     timer: null             // {end, minutes, subject}
   };
@@ -75,7 +80,7 @@
 
   function dayRec(key) {
     key = key || today();
-    if (!S.history[key]) S.history[key] = { ch: 0, focus: 0, sessions: 0, mood: null, gameXp: 0, reflected: false, active: false };
+    if (!S.history[key]) S.history[key] = { ch: 0, focus: 0, sessions: 0, mood: null, gameXp: 0, reflected: false, active: false, reviews: 0, cardsAdded: 0 };
     return S.history[key];
   }
   function markActive() { dayRec().active = true; }
@@ -160,7 +165,7 @@
     let base = Math.max(10, Math.round(p.minutes * st.stageObj.ratio));
     if (mood === 0) base = Math.max(8, Math.round(base * 0.5));
 
-    const subs = p.subjects.length ? p.subjects : ["الرياضيات"];
+    const subs = subjectPlan(st.stage);
     const offset = dayNumber(key);
     const subjectAt = i => subs[(offset + i) % subs.length];
     const qCount = 3 + st.stage * 2;
@@ -203,6 +208,21 @@
     S.daily = { date: key, rerolls, list, fullAwarded: false };
     save();
   }
+  /* ترتيب المواد حسب التقييم الأولي:
+     في المرحلتين 1-2 نبدأ بالمواد الأقوى لنكسب الحماس،
+     ومن المرحلة 3 نعطي المواد الضعيفة وقتاً مضاعفاً */
+  function latestLevels() { return S.assess.length ? S.assess[S.assess.length - 1].levels : {}; }
+  function subjectPlan(stage) {
+    const subs = S.profile.subjects.length ? S.profile.subjects : ["الرياضيات"];
+    const lv = latestLevels();
+    if (!Object.keys(lv).length) return subs;
+    const sorted = subs.slice().sort((a, b) => (lv[b] || 3) - (lv[a] || 3));
+    if (stage <= 2) return sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 2)));
+    const plan = [];
+    sorted.slice().reverse().forEach(s => { plan.push(s); if ((lv[s] || 3) <= 2) plan.push(s); });
+    return plan;
+  }
+
   function ensureDaily() {
     if (!S.profile) return;
     if (!S.daily || S.daily.date !== today()) buildDaily(0);
@@ -244,7 +264,8 @@
     const kinds = [
       { k: "sessions", text: "أنجز 5 جلسات تركيز هذا الأسبوع", target: 5 },
       { k: "days", text: "ادرس 5 أيام من 7 هذا الأسبوع", target: 5 },
-      { k: "ch", text: "أنجز 15 تحدياً هذا الأسبوع", target: 15 }
+      { k: "ch", text: "أنجز 15 تحدياً هذا الأسبوع", target: 15 },
+      { k: "reviews", text: "راجع 30 بطاقة هذا الأسبوع", target: 30 }
     ];
     const w = kinds[dayNumber(wkey) % kinds.length];
     let val = 0;
@@ -254,6 +275,7 @@
       if (w.k === "sessions") val += h.sessions || 0;
       if (w.k === "days") val += h.active ? 1 : 0;
       if (w.k === "ch") val += h.ch || 0;
+      if (w.k === "reviews") val += h.reviews || 0;
     }
     return { key: wkey, text: w.text, target: w.target, val: Math.min(val, w.target), claimed: !!S.weeklyClaimed[wkey] };
   }
@@ -314,14 +336,17 @@
 
   function render() {
     if (!S.profile) { renderOnboarding(); return; }
+    if (!S.assess.length && view !== "assess") view = "assess";
+    if (view === "assess") { $("#nav").style.display = "none"; app.innerHTML = viewAssess(); window.scrollTo(0, 0); return; }
     ensureDaily();
     updateTopbar();
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
     $("#nav").style.display = "";
-    const views = { home: viewHome, challenges: viewChallenges, focus: viewFocus, games: viewGames, journey: viewJourney, settings: viewSettings };
+    const views = { home: viewHome, challenges: viewChallenges, focus: viewFocus, games: viewGames, journey: viewJourney, settings: viewSettings, cards: viewCards };
     app.innerHTML = (views[view] || viewHome)();
     if (view === "focus") tickTimer();
     window.scrollTo(0, 0);
+    if (view === "home") maybeAskFeedback();
   }
 
   /* ---------- البداية ---------- */
@@ -412,6 +437,7 @@
       '<button class="check" data-action="toggle" data-id="' + c.id + '" aria-label="إنجاز">' + (c.done ? "✔" : "") + "</button>" +
       '<div class="grow"><div class="ch-text">' + esc(c.text) + "</div>" +
       '<span class="tag">' + TYPE_LABEL[c.type] + '</span><span class="tag">⏳ ' + c.minutes + ' د</span><span class="tag xp">+' + c.xp + " ⭐</span>" +
+      (!c.done && c.type === "recall" ? ' <button class="chip small" data-action="go" data-v="cards">افتح البطاقات 🗂️</button>' : "") +
       (!c.done && (c.type === "study" || c.type === "bonus") ? ' <button class="chip small" data-action="focusFor" data-m="' + c.minutes + '" data-s="' + esc(c.subject) + '">ابدأ بمؤقت ⏱️</button>' : "") +
       "</div></div>").join("");
 
@@ -515,11 +541,15 @@
   function viewGames() {
     if (game && game.type === "math") return viewMath();
     if (game && game.type === "memory") return viewMemory();
+    if (game && game.type === "quiz") return viewQuiz();
     return '<div class="card"><h2>🧠 ألعاب تنشيط العقل</h2>' +
       '<p class="muted small">5 دقائق لعب تنشّط دماغك قبل الدراسة. (الحد الأقصى ' + GAME_XP_CAP + " ⭐ يومياً من الألعاب)</p></div>" +
       '<div class="card"><h3>⚡ سباق الأرقام</h3><p class="small muted">أجب عن أكبر عدد من العمليات الحسابية في 60 ثانية. تصعب مع مستواك!</p>' +
       '<div class="row"><span class="grow small">أفضل نتيجة: <b>' + (S.best.math || 0) + "</b></span>" +
       '<button class="btn" data-action="startMath">العب ▶</button></div></div>' +
+      '<div class="card"><h3>❓ تحدي المعلومات</h3><p class="small muted">10 أسئلة من موادك. كل إجابة صحيحة = 3 ⭐</p>' +
+      '<div class="row"><span class="grow small">أفضل نتيجة: <b>' + (S.best.quiz != null ? S.best.quiz + " / 10" : "—") + "</b></span>" +
+      '<button class="btn" data-action="startQuiz">العب ▶</button></div></div>' +
       '<div class="card"><h3>🃏 لعبة الذاكرة</h3><p class="small muted">اقلب البطاقات وطابق كل زوج بأقل عدد من المحاولات.</p>' +
       '<div class="row"><span class="grow small">أفضل نتيجة: <b>' + (S.best.memory ? S.best.memory + " محاولة" : "—") + "</b></span>" +
       '<button class="btn" data-action="startMemory">العب ▶</button></div></div>';
@@ -640,6 +670,10 @@
       '<div class="journey">' + stages + "</div></div>" +
       '<div class="card"><h3>🏅 الأوسمة (' + S.badges.length + " / " + BADGES.length + ')</h3><div class="badges">' + badges + "</div></div>" +
       '<div class="card"><h3>📓 يومياتي</h3>' + (journal ? '<ul class="list-plain">' + journal + "</ul>" : '<p class="muted small">لم تكتب أي تأمّل بعد. اكتب أول تأمّل من صفحة التحديات.</p>') + "</div>" +
+      levelsCard() +
+      '<button class="btn accent block" data-action="share">📸 شارك إنجازك</button><br><br>' +
+      feedbackCard() +
+      contactCard() +
       '<button class="btn secondary block" data-action="go" data-v="settings">⚙️ الإعدادات والملف الشخصي</button>';
   }
 
@@ -659,6 +693,7 @@
       '<div class="grid-2"><button class="btn secondary" data-action="export">تصدير</button>' +
       '<button class="btn secondary" data-action="import">استيراد</button></div>' +
       '<input type="file" id="importFile" accept="application/json" hidden></div>' +
+      contactCard() +
       '<div class="card"><h3>⚠️ البدء من جديد</h3><button class="btn accent block" data-action="reset">مسح كل البيانات</button></div>' +
       '<button class="btn secondary block" data-action="go" data-v="journey">رجوع</button>';
   }
@@ -672,12 +707,304 @@
         (step === 3 ? '<br><br><button class="btn secondary block" data-action="lostTimer">شغّل مؤقت 5 دقائق</button>' : ""));
   }
 
+  /* ---------- التقييم الأولي غير الرسمي ---------- */
+  const LEVELS = [
+    { e: "😟", t: "ضعيف جداً" }, { e: "😕", t: "ضعيف" }, { e: "😐", t: "متوسط" }, { e: "🙂", t: "جيد" }, { e: "🤩", t: "ممتاز" }
+  ];
+  const AWAY = ["أقل من شهر", "1-3 أشهر", "3-6 أشهر", "6-12 شهراً", "أكثر من سنة"];
+  let assessDraft = { away: null, levels: {} };
+
+  function viewAssess() {
+    const subs = S.profile.subjects;
+    const first = !S.assess.length;
+    if (!first && !assessDraft.started) {
+      const last = S.assess[S.assess.length - 1];
+      assessDraft = { away: last.away, levels: Object.assign({}, last.levels), started: true };
+    }
+    const done = subs.every(s => assessDraft.levels[s]) && assessDraft.away !== null;
+    return '<div class="card hero center"><div style="font-size:2.6rem">🩺</div><h2>' + (first ? "تقييم سريع لنقطة البداية" : "أعد تقييم مستواك") + "</h2>" +
+      '<p class="muted">ليس امتحاناً ولا توجد إجابة خاطئة! فقط كن صادقاً مع نفسك، لنبني خطتك على مقاسك.' + (first ? " (دقيقة واحدة)" : "") + "</p></div>" +
+      '<div class="card"><h3>⏳ كم صار لك بعيد عن الدراسة؟</h3><div class="chips" style="justify-content:flex-start">' +
+      AWAY.map((a, i) => '<button class="chip' + (assessDraft.away === i ? " sel" : "") + '" data-action="setAway" data-i="' + i + '">' + a + "</button>").join("") + "</div></div>" +
+      '<div class="card"><h3>📊 كيف تشعر بمستواك في كل مادة الآن؟</h3>' +
+      subs.map(sb => '<div class="level-row"><b>' + esc(sb) + '</b><div class="level-btns">' +
+        LEVELS.map((l, i) => '<button class="' + (assessDraft.levels[sb] === i + 1 ? "sel" : "") + '" data-action="setLevel" data-s="' + esc(sb) + '" data-v="' + (i + 1) + '" title="' + l.t + '" aria-label="' + l.t + '">' + l.e + "</button>").join("") +
+        '</div><div class="small muted">' + (assessDraft.levels[sb] ? LEVELS[assessDraft.levels[sb] - 1].t : "&nbsp;") + "</div></div>").join("") +
+      "</div>" +
+      '<button class="btn big block" data-action="saveAssess"' + (done ? "" : " disabled") + ">" + (first ? "احفظ وابدأ الرحلة ✨" : "احفظ التقييم ✔") + "</button>" +
+      (first ? "" : '<br><br><button class="btn secondary block" data-action="cancelAssess">إلغاء</button>');
+  }
+  function saveAssess() {
+    const first = !S.assess.length;
+    const subs = S.profile.subjects;
+    const levels = {};
+    subs.forEach(s => { levels[s] = assessDraft.levels[s]; });
+    const lastDate = first ? null : S.assess[S.assess.length - 1].date;
+    S.assess.push({ date: today(), away: assessDraft.away, levels });
+    assessDraft = { away: null, levels: {} };
+    if (S.daily && !S.daily.list.some(c => c.done)) S.daily = null; // أعد توليد تحديات اليوم بالخطة الجديدة
+    save();
+    view = "home";
+    render();
+    const sorted = subs.slice().sort((a, b) => levels[b] - levels[a]);
+    const strong = sorted[0], weak = sorted[sorted.length - 1];
+    if (first) {
+      addXP(20, "أكملت التقييم");
+      const away = S.assess[0].away;
+      showModal("✨", "مرحباً " + S.profile.name + "!",
+        (away >= 3 ? "غبت فترة طويلة، وهذا لا يقلل منك أبداً. " : "") +
+        "سنبدأ بمادتك الأقوى «" + strong + "» لنكسب الحماس" +
+        (weak !== strong ? "، ثم نعطي «" + weak + "» اهتماماً أكبر تدريجياً" : "") +
+        ". ما عليك اليوم إلا أن تنجز تحدياً واحداً!");
+    } else {
+      if (!lastDate || dayNumber(today()) - dayNumber(lastDate) >= 7) addXP(15, "تقييم جديد");
+      showModal("📊", "تم حفظ تقييمك", "شاهد تطوّرك في صفحة «رحلتي». المادة التي تحتاج تركيزاً أكثر الآن: «" + weak + "».");
+    }
+  }
+  function levelsCard() {
+    if (!S.assess.length) return "";
+    const first = S.assess[0].levels, last = latestLevels();
+    const rows = S.profile.subjects.map(sb => {
+      const v = last[sb], f = first[sb];
+      if (!v) return "";
+      const diff = f ? v - f : 0;
+      return '<div class="row small" style="margin-bottom:6px"><span style="width:110px">' + esc(sb) + "</span>" +
+        '<div class="progress grow"><div style="width:' + v * 20 + '%"></div></div>' +
+        "<span>" + LEVELS[v - 1].e + (diff > 0 ? ' <b style="color:var(--good)">↑' + diff + "</b>" : "") + "</span></div>";
+    }).join("");
+    return '<div class="card"><h3>📊 مستواي في المواد</h3>' +
+      '<p class="small muted">حسب تقييمك الذاتي. آخر تقييم: ' + S.assess[S.assess.length - 1].date + (S.assess.length > 1 ? " · عدد التقييمات: " + S.assess.length : "") + "</p>" + rows +
+      '<br><button class="btn secondary block" data-action="reassess">🩺 أعد تقييم مستواك</button></div>';
+  }
+
+  /* ---------- التغذية الراجعة والاقتراحات ---------- */
+  let fbDraft = { rating: 0, kind: "اقتراح" };
+  const FB_KINDS = ["اقتراح", "مشكلة", "أعجبني", "سؤال"];
+  function feedbackCard() {
+    const sent = S.feedback.length;
+    return '<div class="card"><h3>💬 رأيك يهمنا</h3>' +
+      '<p class="small muted">قيّم التطبيق واكتب أي اقتراح أو ملاحظة — رأيك يساعدنا نطوّره لك ولغيرك من الطلاب.' + (sent ? " (أرسلت " + sent + " ملاحظة، شكراً لك 💜)" : "") + "</p>" +
+      '<div class="stars" role="radiogroup" aria-label="التقييم">' + [1, 2, 3, 4, 5].map(n =>
+        '<button class="' + (n <= fbDraft.rating ? "on" : "") + '" data-action="fbStar" data-n="' + n + '" aria-label="' + n + ' نجوم">★</button>').join("") + "</div>" +
+      '<div class="chips">' + FB_KINDS.map(k => '<button class="chip' + (fbDraft.kind === k ? " sel" : "") + '" data-action="fbKind" data-k="' + k + '">' + k + "</button>").join("") + "</div>" +
+      '<label for="fbText">رسالتك</label><textarea id="fbText" maxlength="1000" placeholder="ما الذي أعجبك؟ ما الذي تتمنى أن نضيفه أو نغيّره؟"></textarea><br><br>' +
+      '<button class="btn block" data-action="sendFeedback">أرسل رأيك ✉️</button></div>';
+  }
+  function sendFeedback(text) {
+    const st = stats(), lv = levelInfo(S.xp);
+    S.feedback.push({ date: today(), rating: fbDraft.rating, kind: fbDraft.kind, text });
+    const firstThisWeek = !S.feedback.slice(0, -1).some(f => dayNumber(today()) - dayNumber(f.date) < 7);
+    save();
+    const body =
+      "التقييم: " + (fbDraft.rating ? "★".repeat(fbDraft.rating) + "☆".repeat(5 - fbDraft.rating) + " (" + fbDraft.rating + "/5)" : "بدون") + "\n" +
+      "النوع: " + fbDraft.kind + "\n\n" + text + "\n\n" +
+      "— معلومات (بدون بيانات شخصية):\n" +
+      "المرحلة الدراسية: " + S.profile.grade + "\nالمستوى في التطبيق: " + lv.level + "\nأيام الاستخدام: " + st.activeDays + "\nالمرحلة: " + st.stageObj.name;
+    fbDraft = { rating: 0, kind: "اقتراح" };
+    if (firstThisWeek) addXP(10, "شكراً على رأيك"); else { markActive(); save(); }
+    render();
+    if (CONTACT && CONTACT.email) {
+      location.href = "mailto:" + CONTACT.email + "?subject=" + encodeURIComponent("رأي في رحلة العودة — " + S.feedback[S.feedback.length - 1].kind) + "&body=" + encodeURIComponent(body);
+    }
+    toast("شكراً لك! 💜 سيفتح تطبيق البريد لإرسال رسالتك");
+  }
+  /* سؤال لطيف عن الرأي بعد 3 أيام استخدام */
+  function maybeAskFeedback() {
+    if (S.feedbackAsked || !S.profile || stats().activeDays < 3) return;
+    S.feedbackAsked = true;
+    save();
+    setTimeout(() => showModal("💬", "ما رأيك بالتطبيق حتى الآن؟", "مرّت 3 أيام على رحلتك! تقييمك واقتراحاتك تساعدنا نطوّر التطبيق.",
+      '<button class="btn block" data-action="goFeedback">أعطِ رأيك</button><br><br><button class="btn secondary block" data-action="closeModal">لاحقاً</button>'), 1200);
+  }
+
+  /* ---------- التواصل ---------- */
+  function contactLinks() {
+    const c = typeof CONTACT !== "undefined" ? CONTACT : {};
+    const out = [];
+    if (c.whatsapp) out.push({ icon: "💬", label: "واتساب", href: "https://wa.me/" + String(c.whatsapp).replace(/\D/g, "") });
+    if (c.instagram) out.push({ icon: "📷", label: "إنستغرام", href: /^https?:/.test(c.instagram) ? c.instagram : "https://instagram.com/" + c.instagram.replace(/^@/, "") });
+    if (c.facebook) out.push({ icon: "👍", label: "فيسبوك", href: c.facebook });
+    if (c.email) out.push({ icon: "✉️", label: c.email, href: "mailto:" + c.email + "?subject=" + encodeURIComponent("رحلة العودة") });
+    return out;
+  }
+  function contactCard() {
+    const links = contactLinks();
+    if (!links.length) return "";
+    return '<div class="card center"><div style="font-size:2rem">🤝</div><h3>تواصل معنا</h3>' +
+      "<p class=\"muted small\">لديك سؤال أو اقتراح أو تحتاج مساعدة؟ تواصل مع <b>" + esc(CONTACT.name) + "</b>" +
+      (CONTACT.role ? " — " + esc(CONTACT.role) : "") + "</p>" +
+      '<div class="chips">' + links.map(l => '<a class="chip" style="text-decoration:none" target="_blank" rel="noopener" href="' + esc(l.href) + '">' + l.icon + " " + esc(l.label) + "</a>").join("") +
+      "</div></div>";
+  }
+
+  /* ---------- البطاقات (التكرار المتباعد — نظام لايتنر) ---------- */
+  const BOX_DAYS = [0, 1, 2, 4, 8, 16];
+  const CARD_XP_DAILY = 10; // عدد البطاقات الجديدة التي تعطي نقاطاً يومياً
+  let review = null;
+  let cardsFilter = "all";
+  const dueCards = () => S.cards.filter(c => c.due <= today());
+
+  function viewCards() {
+    if (review) return viewReview();
+    const due = dueCards();
+    const subs = S.profile.subjects.length ? S.profile.subjects : ["عام"];
+    const counts = [1, 2, 3, 4, 5].map(b => S.cards.filter(c => c.box === b).length);
+    const list = S.cards.filter(c => cardsFilter === "all" || c.subject === cardsFilter).slice().reverse();
+    const usedSubs = subs.filter(s => S.cards.some(c => c.subject === s));
+    return '<div class="card"><h2>🗂️ بطاقاتي</h2>' +
+      '<p class="muted small">اكتب سؤالاً من درسك وجوابه. التطبيق يذكّرك بمراجعة كل بطاقة في الوقت المناسب: كل ما عرفتها تنتقل لصندوق أعلى وتتأخر مراجعتها، وإذا نسيتها ترجع للصندوق الأول. هكذا تثبت المعلومة في ذاكرتك للأبد.</p>' +
+      '<div class="boxes">' + counts.map((n, i) => '<div class="stat"><b>' + n + '</b><span class="small muted">صندوق ' + (i + 1) + "</span></div>").join("") + "</div><br>" +
+      (due.length ? '<button class="btn big good block" data-action="startReview">🔁 راجع الآن (' + due.length + " بطاقة)</button>" :
+        '<p class="center muted">' + (S.cards.length ? "✔ لا بطاقات للمراجعة اليوم. أحسنت!" : "لم تصنع أي بطاقة بعد. ابدأ بالأولى 👇") + "</p>") +
+      "</div>" +
+      '<div class="card"><h3>➕ بطاقة جديدة</h3>' +
+      '<label for="cardSub">المادة</label><select id="cardSub">' + subs.map(s => "<option" + (s === lastCardSub ? " selected" : "") + ">" + esc(s) + "</option>").join("") + "</select>" +
+      '<label for="cardQ">السؤال (الوجه الأمامي)</label><textarea id="cardQ" maxlength="300" style="min-height:60px" placeholder="مثلاً: ما قانون نيوتن الثاني؟"></textarea>' +
+      '<label for="cardA">الجواب (الوجه الخلفي)</label><textarea id="cardA" maxlength="500" style="min-height:60px" placeholder="القوة = الكتلة × التسارع"></textarea><br><br>' +
+      '<button class="btn block" data-action="addCard">أضف البطاقة (+5 ⭐)</button></div>' +
+      (S.cards.length ? '<div class="card"><h3>كل البطاقات (' + S.cards.length + ")</h3>" +
+        '<div class="chips" style="justify-content:flex-start">' +
+        ['<button class="chip' + (cardsFilter === "all" ? " sel" : "") + '" data-action="cardFilter" data-s="all">الكل</button>']
+          .concat(usedSubs.map(s => '<button class="chip' + (cardsFilter === s ? " sel" : "") + '" data-action="cardFilter" data-s="' + esc(s) + '">' + esc(s) + "</button>")).join("") +
+        '</div><ul class="list-plain">' + list.map(c =>
+          '<li><div class="row"><b class="grow">' + esc(c.q) + "</b>" +
+          '<button class="chip small" data-action="delCard" data-id="' + c.id + '" aria-label="حذف">🗑️</button></div>' +
+          '<div class="muted small">' + esc(c.a) + "</div>" +
+          '<span class="tag">' + esc(c.subject) + '</span><span class="tag">📦 ' + c.box + '</span><span class="tag">' + (c.due <= today() ? "للمراجعة اليوم" : "المراجعة: " + c.due) + "</span></li>").join("") +
+        "</ul></div>" : "");
+  }
+  let lastCardSub = null;
+
+  function viewReview() {
+    const r = review;
+    const c = S.cards.find(x => x.id === r.queue[0]);
+    if (!c) {
+      return '<div class="card center"><div style="font-size:3rem">🎉</div><h2>انتهت المراجعة!</h2>' +
+        "<p>راجعت <b>" + r.done + "</b> بطاقة، وعرفت <b>" + r.right + "</b> منها من أول مرة.</p>" +
+        '<button class="btn" data-action="endReview">رجوع للبطاقات</button></div>';
+    }
+    return '<div class="card center"><div class="row"><span class="tag">' + esc(c.subject) + '</span><span class="grow"></span><span class="muted small">باقي ' + r.queue.length + "</span></div>" +
+      '<div class="flash">' + esc(c.q) + "</div>" +
+      (r.show ?
+        '<div class="flash answer">' + esc(c.a) + "</div>" +
+        '<p class="small muted">كن صادقاً مع نفسك 😉</p>' +
+        '<div class="grid-2"><button class="btn accent big" data-action="grade" data-ok="0">✖ ما عرفتها</button>' +
+        '<button class="btn good big" data-action="grade" data-ok="1">✔ عرفتها</button></div>' :
+        '<p class="small muted">حاول تتذكّر الجواب في عقلك أولاً…</p><button class="btn big block" data-action="showAnswer">أظهر الجواب 👀</button>') +
+      '<br><button class="btn secondary" data-action="endReview">إنهاء</button></div>';
+  }
+  function gradeCard(ok) {
+    const r = review;
+    const id = r.queue.shift();
+    const c = S.cards.find(x => x.id === id);
+    if (!c) { render(); return; }
+    const rec = dayRec();
+    rec.reviews = (rec.reviews || 0) + 1;
+    S.reviews = (S.reviews || 0) + 1;
+    r.show = false;
+    if (ok && r.retried.includes(id)) {
+      // نسيتها ثم تذكرتها في نفس الجلسة: تبقى في الصندوق 1 وتعود غداً
+      markActive();
+    } else if (ok) {
+      c.box = Math.min(5, c.box + 1);
+      c.due = dateKey(addDays(new Date(), BOX_DAYS[c.box]));
+      r.right++; r.done++; addXP(3);
+    } else {
+      c.box = 1;
+      c.due = dateKey(addDays(new Date(), 1));
+      if (!r.retried.includes(id)) { r.done++; r.retried.push(id); r.queue.push(id); }
+      markActive();
+    }
+    save();
+    if (!r.queue.length && r.right) toast("+" + r.right * 3 + " ⭐ من المراجعة");
+    checkBadges();
+    render();
+  }
+
+  /* ---------- تحدي المعلومات ---------- */
+  function startQuiz() {
+    const subs = S.profile.subjects;
+    const mine = shuffle(QUIZ.filter(q => subs.includes(q.s)));
+    const others = shuffle(QUIZ.filter(q => !subs.includes(q.s)));
+    const qs = mine.concat(others).slice(0, 10).map(q => Object.assign({}, q, { order: shuffle([0, 1, 2, 3]) }));
+    game = { type: "quiz", qs: shuffle(qs), i: 0, score: 0, picked: null, over: false };
+    render();
+  }
+  function viewQuiz() {
+    const g = game;
+    if (g.over) {
+      const msg = g.score >= 9 ? "عبقري! 🏆" : g.score >= 7 ? "ممتاز جداً! 🌟" : g.score >= 5 ? "جيد، استمر! 💪" : "كل محاولة تعلّمك شيئاً جديداً 🌱";
+      return '<div class="card center"><div style="font-size:3rem">❓</div><h2>' + msg + "</h2><p>نتيجتك: <b>" + g.score + " / 10</b></p>" +
+        '<button class="btn" data-action="startQuiz">مرة أخرى</button> <button class="btn secondary" data-action="exitGame">رجوع</button></div>';
+    }
+    const q = g.qs[g.i];
+    return '<div class="card"><div class="row"><span class="tag">' + esc(q.s) + '</span><span class="grow"></span><span class="muted">' + (g.i + 1) + " / 10 · ✔ " + g.score + "</span></div>" +
+      '<div class="progress" style="margin:8px 0 14px"><div style="width:' + (g.i / 10 * 100) + '%"></div></div>' +
+      '<h3 style="margin-bottom:14px">' + esc(q.q) + "</h3>" +
+      '<div class="opts">' + q.order.map(idx => {
+        let cls = "opt";
+        if (g.picked !== null) { if (idx === q.a) cls += " right"; else if (idx === g.picked) cls += " wrong"; }
+        return '<button class="' + cls + '" data-action="quizAns" data-i="' + idx + '"' + (g.picked !== null ? " disabled" : "") + ">" + esc(q.o[idx]) + "</button>";
+      }).join("") + "</div>" +
+      (g.picked !== null ? '<br><button class="btn block" data-action="quizNext">' + (g.i === 9 ? "النتيجة 🏁" : "التالي ←") + "</button>" : "") + "</div>";
+  }
+
+  /* ---------- مشاركة الإنجاز ---------- */
+  async function shareProgress() {
+    const st = stats(), lv = levelInfo(S.xp);
+    const W = 1080, H = 1350;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const x = cv.getContext("2d");
+    const g = x.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, "#6c4cf5"); g.addColorStop(0.6, "#b05cff"); g.addColorStop(1, "#ff8a3d");
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    const F = (w, sz) => w + " " + sz + 'px system-ui, "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif';
+    x.direction = "rtl"; x.textAlign = "center"; x.fillStyle = "#fff";
+    x.font = F(800, 60); x.fillText("🚀 رحلة العودة", W / 2, 140);
+    x.font = F(800, 96); x.fillText(S.profile.name, W / 2, 330);
+    x.font = F(600, 54); x.fillText("المستوى " + lv.level + " — " + lv.title, W / 2, 425);
+    x.font = F(600, 44); x.fillText("المرحلة: " + st.stageObj.icon + " " + st.stageObj.name, W / 2, 500);
+    const boxes = [["🔥", st.streak, "أيام متتالية"], ["⭐", S.xp, "نقطة"], ["⏱️", S.totalFocus, "دقيقة تركيز"], ["🏅", S.badges.length, "وسام"]];
+    boxes.forEach((b, i) => {
+      const bx = 90 + (i % 2) * 470, by = 580 + Math.floor(i / 2) * 260, bw = 430, bh = 220;
+      x.fillStyle = "rgba(255,255,255,0.18)";
+      if (x.roundRect) { x.beginPath(); x.roundRect(bx, by, bw, bh, 36); x.fill(); } else x.fillRect(bx, by, bw, bh);
+      x.fillStyle = "#fff";
+      x.font = F(800, 84); x.fillText(b[0] + " " + b[1], bx + bw / 2, by + 115);
+      x.font = F(600, 40); x.fillText(b[2], bx + bw / 2, by + 180);
+    });
+    x.font = F(700, 46); const qt = QUOTES[dayNumber(today()) % QUOTES.length];
+    x.fillText(qt.startsWith("«") ? qt : "«" + qt + "»", W / 2, 1180, W - 120);
+    x.font = F(600, 34); x.globalAlpha = 0.85; x.fillText("ابدأ رحلتك أنت أيضاً ✨", W / 2, 1270); x.globalAlpha = 1;
+
+    const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+    if (!blob) { toast("تعذّر إنشاء الصورة"); return; }
+    const file = new File([blob], "rehla-" + today() + ".png", { type: "image/png" });
+    const text = "وصلت للمستوى " + lv.level + " في رحلة العودة 🚀 وسلسلتي " + st.streak + " أيام 🔥";
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], text }); return; }
+      catch (e) { if (e && e.name === "AbortError") return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast("تم حفظ الصورة 📸 شاركها مع أصحابك!");
+  }
+
+  let keptText = null, keptScroll = 0;
+  function keepText() { const f = $("#fbText"); keptText = f ? f.value : null; keptScroll = window.scrollY; }
+  function restoreText() { const f = $("#fbText"); if (f && keptText !== null) f.value = keptText; window.scrollTo(0, keptScroll); keptText = null; }
+
   /* ================= الأحداث ================= */
   document.addEventListener("click", e => {
     const navBtn = e.target.closest("#nav button");
     if (navBtn) {
       if (game && game.type === "math" && !game.over) { clearInterval(mathInt); }
       game = null;
+      review = null;
       view = navBtn.dataset.view;
       render();
       return;
@@ -704,9 +1031,9 @@
         if (!onboardSel.length) { toast("اختر مادة واحدة على الأقل"); return; }
         S.profile = { name, grade: $("#obGrade").value, subjects: onboardSel.slice(), minutes: +$("#obMinutes").value, goal: $("#obGoal").value.trim() };
         save();
-        view = "home";
+        assessDraft = { away: null, levels: {} };
+        view = "assess";
         render();
-        showModal("✨", "مرحباً " + name + "!", "سنبدأ بمرحلة «إشعال الشرارة»: مهام صغيرة جداً. ما عليك إلا أن تنجز تحدياً واحداً اليوم. هيا نبدأ!");
         break;
       }
       case "saveSettings": {
@@ -783,6 +1110,67 @@
       case "startMemory": startMemory(); break;
       case "memFlip": memFlip(+el.dataset.i); break;
       case "exitGame": game = null; render(); break;
+      case "startQuiz": startQuiz(); break;
+      case "quizAns": {
+        if (!game || game.type !== "quiz" || game.picked !== null) return;
+        game.picked = +el.dataset.i;
+        const ok = game.picked === game.qs[game.i].a;
+        if (ok) game.score++; else if (navigator.vibrate) navigator.vibrate(60);
+        render();
+        break;
+      }
+      case "quizNext": {
+        if (!game || game.type !== "quiz") return;
+        game.i++; game.picked = null;
+        if (game.i >= game.qs.length) {
+          game.over = true;
+          if (S.best.quiz == null || game.score > S.best.quiz) S.best.quiz = game.score;
+          save();
+          gameXP(game.score * 3);
+          if (game.score === 10) confetti();
+        }
+        render();
+        break;
+      }
+      case "addCard": {
+        const q = ($("#cardQ").value || "").trim(), ans = ($("#cardA").value || "").trim();
+        if (!q || !ans) { toast("اكتب السؤال والجواب 🙂"); return; }
+        lastCardSub = $("#cardSub").value;
+        S.cards.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), subject: lastCardSub, q, a: ans, box: 1, due: today() });
+        const rec = dayRec();
+        rec.cardsAdded = (rec.cardsAdded || 0) + 1;
+        save();
+        if (rec.cardsAdded <= CARD_XP_DAILY) addXP(5, "بطاقة جديدة"); else { markActive(); save(); toast("أضيفت البطاقة ✔"); checkBadges(); }
+        render();
+        setTimeout(() => { const f = $("#cardQ"); if (f) f.focus(); }, 50);
+        break;
+      }
+      case "delCard":
+        if (confirm("حذف هذه البطاقة؟")) { S.cards = S.cards.filter(c => c.id !== el.dataset.id); save(); render(); }
+        break;
+      case "cardFilter": cardsFilter = el.dataset.s; render(); break;
+      case "startReview": review = { queue: shuffle(dueCards().map(c => c.id)), show: false, done: 0, right: 0, retried: [] }; render(); break;
+      case "showAnswer": if (review) { review.show = true; render(); } break;
+      case "grade": gradeCard(el.dataset.ok === "1"); break;
+      case "endReview": review = null; render(); break;
+      case "share": shareProgress(); break;
+      case "setAway": assessDraft.away = +el.dataset.i; render(); break;
+      case "setLevel": assessDraft.levels[el.dataset.s] = +el.dataset.v; render(); break;
+      case "saveAssess": saveAssess(); break;
+      case "reassess": assessDraft = { away: null, levels: {} }; view = "assess"; render(); break;
+      case "cancelAssess": assessDraft = { away: null, levels: {} }; view = "journey"; render(); break;
+      case "fbStar": fbDraft.rating = +el.dataset.n; keepText(); render(); restoreText(); break;
+      case "fbKind": fbDraft.kind = el.dataset.k; keepText(); render(); restoreText(); break;
+      case "sendFeedback": {
+        const t = ($("#fbText").value || "").trim();
+        if (!t && !fbDraft.rating) { toast("اختر تقييماً أو اكتب رسالة 🙂"); return; }
+        sendFeedback(t);
+        break;
+      }
+      case "goFeedback":
+        closeModal(); view = "journey"; render();
+        setTimeout(() => { const f = $("#fbText"); if (f) { f.scrollIntoView({ block: "center" }); f.focus(); } }, 100);
+        break;
       case "export": {
         const blob = new Blob([JSON.stringify(S)], { type: "application/json" });
         const url = URL.createObjectURL(blob);

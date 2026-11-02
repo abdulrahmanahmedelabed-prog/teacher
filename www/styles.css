@@ -226,3 +226,38 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 @media (max-width: 420px) {
   .game-q { font-size: 2rem; }
 }
+
+/* البطاقات */
+.boxes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.boxes .stat { padding: 8px 2px; }
+.flash {
+  font-size: 1.3rem; font-weight: 800; padding: 26px 16px; margin: 12px 0;
+  border-radius: 16px; background: var(--bg); border: 2px dashed var(--line); white-space: pre-wrap;
+}
+.flash.answer { background: color-mix(in srgb, var(--good) 12%, var(--card)); border: 2px solid var(--good); font-weight: 600; }
+
+/* تحدي المعلومات */
+.opts { display: grid; gap: 10px; }
+.opt {
+  text-align: right; padding: 12px 16px; border-radius: 14px; cursor: pointer;
+  border: 2px solid var(--line); background: var(--bg); font-weight: 600;
+}
+.opt:not(:disabled):hover { border-color: var(--primary); }
+.opt.right { background: var(--good); border-color: var(--good); color: #fff; }
+.opt.wrong { background: #ff5a5a; border-color: #ff5a5a; color: #fff; }
+.opt:disabled { cursor: default; }
+
+/* التقييم الأولي */
+.level-row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.level-row:last-child { border-bottom: 0; }
+.level-btns { display: flex; gap: 6px; margin-top: 6px; }
+.level-btns button {
+  flex: 1; font-size: 1.5rem; padding: 6px 0; border-radius: 12px; cursor: pointer;
+  background: var(--bg); border: 2px solid transparent;
+}
+.level-btns button.sel { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--card)); }
+
+/* النجوم */
+.stars { display: flex; justify-content: center; gap: 6px; margin: 6px 0 12px; direction: ltr; }
+.stars button { font-size: 2.2rem; background: none; border: 0; cursor: pointer; color: var(--line); line-height: 1; }
+.stars button.on { color: #ffb020; }
