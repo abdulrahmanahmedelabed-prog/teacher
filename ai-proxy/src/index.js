@@ -94,7 +94,8 @@ async function chat(request, client, cors, cardsMode) {
   const history = cleanHistory(body.messages);
   if (!history) return json({ error: "bad_messages" }, 400, cors);
 
-  const ctx = "صف الطالب: " + clip(body.grade, 40) + " · المادة: " + clip(body.subject, 40) + " · عنوان الكتاب: " + clip(body.title, 80);
+  const ctx = "صف الطالب: " + clip(body.grade, 40) + " · المادة: " + clip(body.subject, 40) + " · عنوان الكتاب: " + clip(body.title, 80) +
+    (body.simple === true ? "\n(اكتب بجمل قصيرة جداً وكلمات سهلة، فقد يُقرأ ردّك بصوت لطالب صغير أو لطالب يستعيد مهارة القراءة)" : "");
   // الكتاب في أول رسالة (ثابت) مع نقطة تخزين مؤقت، فلا يُدفع ثمنه كاملاً في كل سؤال
   const bookBlock = source.kind === "image"
     ? { type: "image", source: source.src, cache_control: { type: "ephemeral" } }

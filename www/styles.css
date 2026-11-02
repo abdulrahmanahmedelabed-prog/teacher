@@ -538,3 +538,27 @@ input[type=range] { width: 100%; accent-color: var(--primary); min-height: 36px;
 .soft-ask { border: 2px dashed var(--line); }
 .soft-ask b { display: block; margin-bottom: 4px; }
 input[type=time] { width: 100%; padding: 10px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--text); font: inherit; direction: ltr; }
+
+/* القراءة بصوت والإملاء */
+.say-btn { border: 0; background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary-text); border-radius: 999px; width: 40px; height: 40px; font-size: 1.1rem; cursor: pointer; vertical-align: middle; margin-inline-start: 4px; }
+.field-mic { position: relative; }
+.field-mic textarea { padding-inline-end: 56px; }
+.field-mic .mic-btn { position: absolute; inset-inline-end: 6px; bottom: 6px; }
+.mic-btn { border: 0; border-radius: 999px; min-width: 44px; height: 44px; padding: 0 12px; cursor: pointer; font-size: 1.15rem; background: color-mix(in srgb, var(--primary) 14%, var(--card)); color: var(--primary-text); flex: none; }
+.mic-btn.listening { background: #c62828; color: #fff; font-size: .9rem; animation: micPulse 1.2s infinite; }
+@keyframes micPulse { 50% { box-shadow: 0 0 0 8px rgba(198, 40, 40, .2); } }
+.vn-btn { margin-top: 10px; }
+.helper-note { background: var(--bg); border-radius: var(--r-sm); padding: 8px 12px; font-size: var(--fs-sm); margin: 10px 0; }
+
+/* الواجهة المبسطة للصغار */
+.young-card .young-emoji { font-size: 4rem; text-align: center; line-height: 1.2; margin: 6px 0; }
+.young-card .next-text { font-size: 1.35rem; }
+.ch-emoji { font-size: 1.4rem; }
+body.young #xpPill, body.young .hero .progress, body.young .hero-meta, body.young #nav [data-view="focus"] { display: none; }
+body.young .challenge .ch-text { font-size: 1.1rem; }
+.count-pics { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; font-size: 2.2rem; margin: 12px 0 16px; }
+.big-tiles .btn { font-size: 2rem; min-height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.big-tiles .btn small { font-size: .8rem; color: var(--muted); }
+.letter-prompt { font-size: 1.4rem; }
+.letter-prompt b { font-size: 2.4rem; color: var(--primary-text); }
+.young-games .btn { min-height: 64px; }

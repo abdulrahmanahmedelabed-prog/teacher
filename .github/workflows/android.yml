@@ -36,8 +36,10 @@ jobs:
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           grep -q "android.permission.VIBRATE" $MANIFEST || \
-            sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />#' $MANIFEST
-          grep -n "permission" $MANIFEST
+            sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />#' $MANIFEST
+          grep -q "android.speech.RecognitionService" $MANIFEST || \
+            sed -i 's#</manifest>#    <queries>\n        <intent><action android:name="android.speech.RecognitionService" /></intent>\n        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>\n    </queries>\n</manifest>#' $MANIFEST
+          grep -n "permission\|queries\|RecognitionService" $MANIFEST
       - name: Apply app icon
         run: |
           RES=android/app/src/main/res

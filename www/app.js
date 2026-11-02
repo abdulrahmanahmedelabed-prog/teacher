@@ -24,7 +24,8 @@
     reviews: 0,
     weeklyClaimed: {},
     timer: null,            // {end, minutes, subject}
-    settings: { sound: true, volume: 0.6, haptics: true, quiet: true, ambient: false },
+    settings: { sound: true, volume: 0.6, haptics: true, quiet: true, ambient: false,
+      young: false, readAloud: false, voiceIn: true, together: false, stt: "", simple: false },
     books: [],              // كتبي: [{id, title, subject, kind:"file"|"link", mime, size, url, fileId, added}]
     bookChats: {},          // محادثات المعلم الذكي لكل كتاب: {id: [{role, text}]}
     deviceId: "",
@@ -62,11 +63,16 @@
     st.badges = st.badges.filter(b => typeof b === "string");
     st.cards = st.cards.filter(c => c && typeof c === "object").map(c => ({
       id: safeId(c.id), subject: str(c.subject), q: str(c.q), a: str(c.a),
-      box: Math.min(6, Math.max(1, Math.round(num(c.box)) || 1)), due: dateOk(c.due) ? c.due : dateKey()
+      box: Math.min(6, Math.max(1, Math.round(num(c.box)) || 1)), due: dateOk(c.due) ? c.due : dateKey(),
+      deck: c.deck === "letters" ? "letters" : undefined
     }));
     st.assess = st.assess.filter(a => a && typeof a === "object" && dateOk(a.date) && a.levels && typeof a.levels === "object");
     st.assess.forEach(a => { Object.keys(a.levels).forEach(k => { a.levels[k] = Math.min(5, Math.max(1, Math.round(num(a.levels[k])) || 3)); }); a.away = num(a.away); });
-    st.journal = st.journal.filter(j => j && typeof j === "object").map(j => ({ date: str(j.date).slice(0, 10), text: str(j.text) }));
+    st.journal = st.journal.filter(j => j && typeof j === "object").map(j => {
+      const o = { date: str(j.date).slice(0, 10), text: str(j.text) };
+      if (/^vn[A-Za-z0-9]+$/.test(str(j.vn))) o.vn = j.vn;
+      return o;
+    });
     st.feedback = st.feedback.filter(f => f && typeof f === "object" && dateOk(f.date));
     if (st.profile !== null) {
       if (!st.profile || typeof st.profile !== "object" || !Array.isArray(st.profile.subjects)) throw new Error("bad profile");
@@ -79,7 +85,9 @@
     const set0 = st.settings && typeof st.settings === "object" ? st.settings : {};
     st.settings = {
       sound: set0.sound !== false, volume: Math.min(1, Math.max(0, typeof set0.volume === "number" ? set0.volume : defSet.volume)),
-      haptics: set0.haptics !== false, quiet: set0.quiet !== false, ambient: set0.ambient === true
+      haptics: set0.haptics !== false, quiet: set0.quiet !== false, ambient: set0.ambient === true,
+      young: set0.young === true, readAloud: set0.readAloud === true, voiceIn: set0.voiceIn !== false,
+      together: set0.together === true, stt: set0.stt === "cloud" || set0.stt === "local" ? set0.stt : "", simple: set0.simple === true
     };
     if (st.profile && st.profile.cls != null) st.profile.cls = Math.min(13, Math.max(1, Math.round(num(st.profile.cls)) || 0)) || undefined;
     st.books = arr(st.books).filter(b => b && typeof b === "object").map(b => ({
@@ -263,6 +271,23 @@
     const p = S.profile;
     const r = rng(hashStr(key + ":" + rerolls + ":" + (p.name || "")));
     const mood = dayRec().mood;
+    // الصغار: 3 أنشطة قصيرة بالصور (5 دقائق لكل نشاط، 15 دقيقة يومياً كحد أقصى)
+    if (S.settings.young) {
+      const pool = shuffle(CHALLENGE_YOUNG, r);
+      const well = pool.find(x => x.cat === "well");
+      const picks = (LOW_MOODS.includes(mood) ? [well] : []).concat(pool.filter(x => x.cat !== "well")).slice(0, LOW_MOODS.includes(mood) ? 2 : 3);
+      const letter = LETTERS[dayNumber(key) % LETTERS.length];
+      const subs0 = subjectPlan(st.stage);
+      const list0 = picks.map((x, i) => ({
+        id: "young" + i, type: "young", e: x.e, cat: x.cat,
+        text: x.t.replace(/\{letter\}/g, letter[0]), say: x.say.replace(/\{letter\}/g, letter[0]),
+        subject: subs0[i % subs0.length], minutes: 5, xp: 15, done: false
+      }));
+      S.daily = { date: key, rerolls, list: list0, fullAwarded: false };
+      dayRec().given = list0.length;
+      save();
+      return;
+    }
     const low = LOW_MOODS.includes(mood);
     // الحِمل يتبع حال الطالب لا التقويم فقط
     let ratio = st.stageObj.ratio;
@@ -308,7 +333,7 @@
     const studyTpls = shuffle(CHALLENGE_TEMPLATES.study, r);
     const usePrereq = st.stage >= 3 && lessons[subjectAt(0)] && offset % 2 === 0;
     make("study", usePrereq ? PREREQ_TEMPLATE : studyTpls[0], subjectAt(0), base * 0.6);
-    if (st.stage >= 2 && !low) make("study", studyTpls[1], subjectAt(1), base * 0.4);
+    if (st.stage >= 2 && !low) make("study", S.settings.readAloud && st.stage <= 3 ? pick(FLUENCY_TEMPLATES, r) : studyTpls[1], subjectAt(1), base * 0.4);
 
     // 3) استرجاع (يقوّي الذاكرة)
     if (st.stage >= 2) {
@@ -437,12 +462,14 @@
     $("#modalCard").className = "modal-card" + (cls ? " " + cls : "");
     $("#modalCard").innerHTML =
       '<div class="big-emoji" aria-hidden="true">' + emoji + '</div><h2 id="modalTitle">' + esc(title) + '</h2><p class="muted" id="modalBody">' + esc(body) + "</p>" +
+      (body ? sayBtn(title + ". " + body) : "") +
       (buttons || '<button class="btn block" data-action="closeModal">رائع!</button>');
     const m = $("#modal");
     if (m.classList.contains("hidden")) modalReturn = document.activeElement;
     m.classList.remove("hidden");
-    const b = m.querySelector("button");
+    const b = m.querySelector("button:not(.say-btn)");
     if (b) b.focus();
+    if (wantsRead() && S.settings.sound && body) setTimeout(() => sayNow(title + ". " + body), 300);
   }
   function closeModal() {
     $("#modal").classList.add("hidden");
@@ -462,6 +489,67 @@
     if (window.Sound) Sound.play(id, opt);
     if (window.Haptics && HAPTIC[id]) Haptics.buzz(HAPTIC[id]);
   }
+  /* ---------- القراءة بصوت والإملاء الصوتي (speech.js) ---------- */
+  const SP = () => window.Speech;
+  const wantsRead = () => !!(S.settings && (S.settings.young || S.settings.readAloud));
+  // زر «اسمعني» يظهر فقط إذا وُجد صوت عربي على الجهاز (لا أزرار معطّلة)
+  function sayBtn(text) {
+    if (!SP() || !SP().canSpeak() || !text) return "";
+    return '<button type="button" class="say-btn" data-action="say" data-t="' + esc(text) + '" aria-label="اسمعني" title="اسمعني">🔊</button>';
+  }
+  function micBtn(id) {
+    if (!SP() || !SP().canListen() || !S.settings || S.settings.voiceIn === false) return "";
+    return '<button type="button" class="mic-btn" data-action="mic" data-target="' + id + '" aria-label="تحدّث بدل الكتابة" title="تحدّث بدل الكتابة">🎤</button>';
+  }
+  function sayNow(text) {
+    if (!SP()) return false;
+    const vol = S.settings.quiet && (new Date().getHours() >= 22 || new Date().getHours() < 7) ? 0.5 : 1;
+    return SP().speak(text, { young: !!S.settings.young, volume: vol });
+  }
+  // قراءة تلقائية مرة واحدة لكل شاشة، فقط إذا اختار الطالب ذلك والصوت مفعّل
+  let lastAuto = "";
+  function autoRead(root) {
+    if (!wantsRead() || !S.settings.sound || !SP() || !SP().canSpeak()) return;
+    const el = (root || app).querySelector("[data-autoread]");
+    if (!el) return;
+    const txt = el.getAttribute("data-say") || el.textContent;
+    const key = view + "|" + txt;
+    if (key === lastAuto) return;
+    lastAuto = key;
+    setTimeout(() => sayNow(txt), 250);
+  }
+  // الإملاء: زر واحد للبدء والإيقاف، والنص يُكتب في الخانة ويمكن تعديله
+  let micTarget = null;
+  function startMic(id) {
+    const f = document.getElementById(id);
+    if (!f || !SP()) return;
+    if (SP().isListening()) { SP().stopListening(); return; }
+    if (!S.settings.stt) { askMicConsent(id); return; }
+    if (S.settings.stt === "local") { toast("الإملاء يحتاج خدمة تحويل الكلام. يمكنك تسجيل صوتك في «تأمّل اليوم» 🎙️، أو تغيير ذلك من الإعدادات"); return; }
+    const base = f.value ? f.value.replace(/\s+$/, "") + " " : "";
+    const btn = document.querySelector('[data-action="mic"][data-target="' + id + '"]');
+    micTarget = id;
+    if (btn) { btn.classList.add("listening"); btn.textContent = "أستمع… 👂"; }
+    SP().stop();
+    SP().listen({
+      onText: t => { const ff = document.getElementById(id); if (ff) { ff.value = base + t; ff.dispatchEvent(new Event("input", { bubbles: true })); } },
+      onEnd: err => {
+        micTarget = null;
+        const b = document.querySelector('[data-action="mic"][data-target="' + id + '"]');
+        if (b) { b.classList.remove("listening"); b.textContent = "🎤"; }
+        if (err && !/no-speech|aborted/.test(String(err.message || err))) toast(/denied|not-allowed/.test(String(err.message || err)) ? "اسمح للتطبيق باستخدام الميكروفون من إعدادات الهاتف" : "لم نستطع سماعك الآن. جرّب مرة أخرى أو اكتب 🙂");
+      }
+    });
+  }
+  function askMicConsent(id) {
+    const kid = studentClass() <= 6;
+    pendingMic = id;
+    showModal("🎤", kid ? "رسالة لأحد الوالدين" : "قبل أن تتحدث",
+      "عند استخدام 🎤 قد يُرسل صوتك إلى خدمة Google لتحويله إلى كتابة. نحن لا نحفظه ولا نرسله لأحد. أما «التسجيل الصوتي» فيبقى على هذا الجهاز فقط.",
+      '<div class="stack"><button class="btn block" data-action="micCloud">موافق</button><button class="btn ghost block" data-action="micLocal">التسجيل على الجهاز فقط</button></div>');
+  }
+  let pendingMic = null;
+
   /* الاحتفالات تنتظر دورها حتى لا تتصادم النوافذ (مستوى + وسام + جلسة)، وصوتها يُعزف عند ظهورها */
   const celebrateQ = [];
   function celebrate(emoji, title, body, buttons, snd) {
@@ -560,6 +648,7 @@
       return;
     }
     document.body.classList.remove("bare");
+    document.body.classList.toggle("young", !!S.settings.young);
     ensureDaily();
     updateTopbar();
     const navView = view === "games" ? "challenges" : view === "books" ? "cards" : view;
@@ -583,6 +672,7 @@
     afterRender(sameView, y);
     lastView = key;
     justDone = null;
+    autoRead();
     if (view === "home" && !maybeWelcomeBack()) maybeAskFeedback();
   }
 
@@ -601,10 +691,10 @@
   // الصف الحالي (للملفات القديمة: تقدير من المرحلة)
   const studentClass = () => (S.profile && S.profile.cls) || ({ "ابتدائي": 4, "إعدادي": 8, "ثانوي": 10, "توجيهي / ثانوية عامة": 12, "جامعة": 13 })[S.profile && S.profile.grade] || 10;
   const WHENS = ["بعد الفجر", "بعد الإفطار", "بعد العصر", "بعد المغرب", "قبل النوم"];
-  const OB0 = () => ({ step: 0, name: "", grade: "", cls: 0, minutes: 45, when: "", away: null, levels: {} });
+  const OB0 = () => ({ step: 0, name: "", who: "", read: null, grade: "", cls: 0, minutes: 45, when: "", away: null, levels: {} });
   let ob = OB0();
-  const obSteps = () => ["name", "grade"].concat(ob.grade && GRADE_INFO[ob.grade].classes.length > 1 ? ["class"] : [])
-    .concat(["subjects", "time", "away"]).concat(onboardSel.map((s, i) => "lvl:" + i));
+  const obSteps = () => ["name", "who", "grade"].concat(ob.grade && GRADE_INFO[ob.grade].classes.length > 1 ? ["class"] : [])
+    .concat(["read", "subjects", "time", "away"]).concat(onboardSel.map((s, i) => "lvl:" + i));
 
   function renderOnboarding() {
     $("#nav").style.display = "none";
@@ -616,8 +706,21 @@
     if (k === "name") {
       body = '<div class="ob-emoji" aria-hidden="true">🚀</div><h2>أهلاً بك في رحلة العودة</h2>' +
         '<p class="muted">ابتعدت عن الدراسة فترة؟ لا مشكلة. نبدأ معك بخطوات صغيرة جداً، ونكبر معاً كل يوم.</p>' +
-        '<label for="obName">ما اسمك؟</label><input type="text" id="obName" maxlength="30" autocomplete="given-name" placeholder="اكتب اسمك" value="' + esc(ob.name) + '">';
+        '<label for="obName">ما اسمك؟</label><input type="text" id="obName" maxlength="30" autocomplete="given-name" placeholder="اكتب اسمك" value="' + esc(ob.name) + '">' +
+        '<p class="small muted">👨‍👩‍👧 صغير؟ اطلب من أحد أفراد عائلتك أن يكتب اسمك.</p>';
       nextLabel = "لنبدأ";
+    } else if (k === "who") {
+      body = '<div class="ob-emoji" aria-hidden="true">🤝</div><h2 data-autoread>من يستخدم التطبيق الآن؟</h2><div class="choices">' +
+        choice("who", "me", '<span class="face" aria-hidden="true">🧒</span>أنا', ob.who === "me", true) +
+        choice("who", "family", '<span class="face" aria-hidden="true">👨‍👧</span>أنا مع أحد من عائلتي', ob.who === "family", true) + "</div>";
+      showNext = !!ob.who;
+    } else if (k === "read") {
+      body = '<div class="ob-emoji" aria-hidden="true">🔊</div><h2 data-autoread>هل تحب أن نقرأ لك التعليمات بصوت؟</h2>' +
+        '<p class="muted">يمكنك تغيير ذلك في أي وقت من الإعدادات.</p><div class="choices">' +
+        choice("read", "1", '<span class="face" aria-hidden="true">🔊</span>نعم، اقرأ لي', ob.read === true, true) +
+        choice("read", "0", '<span class="face" aria-hidden="true">📖</span>سأقرأ بنفسي', ob.read === false, true) + "</div>" +
+        (SP() && !SP().canSpeak() ? '<p class="small muted">لا يوجد صوت عربي على هذا الجهاز الآن. لتفعيله: الإعدادات ← اللغة ← تحويل النص إلى كلام ← نزّل العربية.</p>' : "");
+      showNext = ob.read !== null;
     } else if (k === "grade") {
       body = '<div class="ob-emoji" aria-hidden="true">🎓</div><h2>في أي مرحلة دراسية أنت؟</h2><div class="choices">' +
         GRADES.map(g => choice("grade", g, GRADE_INFO[g].label, ob.grade === g, true)).join("") + "</div>";
@@ -640,7 +743,7 @@
       showNext = ob.away !== null;
     } else {
       const i = +k.split(":")[1], sb = onboardSel[i];
-      body = '<p class="muted small center">مادة ' + (i + 1) + " من " + onboardSel.length + '</p><h2 class="center">كيف تشعر بمستواك في<br><span class="hl">' + esc(sb) + "</span>؟</h2>" +
+      body = '<p class="muted small center">مادة ' + (i + 1) + " من " + onboardSel.length + '</p><h2 class="center">كيف تشعر بمستواك في <br><span class="hl">' + esc(sb) + "</span>؟</h2>" +
         '<div class="choices faces">' + LEVELS.map((l, j) => choice("lvl", j + 1, '<span class="face" aria-hidden="true">' + l.e + "</span>" + l.t, ob.levels[sb] === j + 1, true)).join("") + "</div>";
       showNext = !!ob.levels[sb];
       if (i === onboardSel.length - 1) {
@@ -660,6 +763,11 @@
       "</div></section>";
     const nm = $("#obName");
     if (nm && !nm.value) setTimeout(() => nm.focus(), 50);
+    const h = app.querySelector(".ob-body h2");
+    if (h && !h.hasAttribute("data-autoread")) h.setAttribute("data-autoread", "");
+    if (h && (ob.read === true || (ob.cls && ob.cls <= 3)) && S.settings.sound && SP() && SP().canSpeak() && lastAuto !== "ob|" + h.textContent) {
+      lastAuto = "ob|" + h.textContent; setTimeout(() => sayNow(h.textContent), 250);
+    }
   }
   function obNext() {
     const steps = obSteps(), k = steps[ob.step];
@@ -677,6 +785,10 @@
     onboardSel.forEach(x => { levels[x] = ob.levels[x] || 3; });
     S.profile = { name: ob.name, grade: ob.grade || GRADES[2], cls: ob.cls || undefined, subjects: onboardSel.slice(), minutes: ob.minutes, goal: "", when: ob.when, lastLesson: {} };
     S.assess.push({ date: today(), away: ob.away == null ? 0 : ob.away, levels });
+    // واجهة مبسطة تلقائياً للصفوف 1–3 (يمكن إيقافها)، والقراءة بصوت حسب اختيار الطالب
+    S.settings.young = !!(ob.cls && ob.cls <= 3);
+    S.settings.readAloud = ob.read === true || S.settings.young;
+    S.settings.together = ob.who === "family";
     S.daily = null;
     const away = ob.away;
     ob = OB0();
@@ -726,10 +838,17 @@
     const bigLost = st.activeDays <= 3 || st.gapDays >= 2;
 
     let nextCard;
-    if (next) {
+    if (next && S.settings.young) {
+      nextCard = '<section class="card next-step young-card' + (justDone ? " enter" : "") + '"><div class="row"><span class="grow"></span>' + dotsHTML(list) + "</div>" +
+        '<div class="young-emoji" aria-hidden="true">' + (next.e || "⭐") + "</div>" +
+        '<p class="next-text center" data-autoread data-say="' + esc(next.say || next.text) + '">' + esc(next.text) + "</p>" +
+        '<div class="center">' + sayBtn(next.say || next.text) + "</div>" +
+        (S.settings.together && HELPER_TIPS[next.cat] ? '<p class="helper-note">👨‍👧 للمرافق: ' + esc(HELPER_TIPS[next.cat]) + "</p>" : "") +
+        '<button class="btn big good block" data-action="toggle" data-id="' + esc(next.id) + '">✔ فعلتها!</button></section>';
+    } else if (next) {
       const study = next.type === "study" || next.type === "bonus";
       nextCard = '<section class="card next-step' + (justDone ? " enter" : "") + '" aria-labelledby="nextH"><div class="row"><h3 class="grow" id="nextH">👉 خطوتك التالية</h3>' + dotsHTML(list) + "</div>" +
-        '<p class="next-text">' + esc(next.text) + "</p>" + metaHTML(next) +
+        '<p class="next-text" data-autoread>' + esc(next.text) + "</p>" + (wantsRead() ? sayBtn(next.text) : "") + metaHTML(next) +
         '<div class="stack">' +
         (study ?
           '<button class="btn big good block" data-action="focusFor" data-id="' + esc(next.id) + '" data-m="' + next.minutes + '" data-s="' + esc(next.subject) + '">▶ ابدأ الآن · ' + next.minutes + " د</button>" +
@@ -816,14 +935,41 @@
     "ما الطريقة التي نفعتك اليوم في الدراسة؟",
     "ما خطوتك الأولى غداً؟ اكتبها بوضوح."
   ];
-  const TYPE_LABEL = { warmup: "إحماء", wellbeing: "عناية بنفسك", study: "دراسة", recall: "استرجاع", creative: "إبداع", bonus: "إضافي" };
+  const TYPE_LABEL = { warmup: "إحماء", wellbeing: "عناية بنفسك", study: "دراسة", recall: "استرجاع", creative: "إبداع", bonus: "إضافي", young: "نشاط" };
   let reflectOpen = false;
+  let yRef = { face: "", did: [] };
+  // تأمّل الصغار: وجه + ماذا فعلت، أو تسجيل صوتي — أي واحد يكفي
+  function youngReflect() {
+    const faces = [["😄", "رائع"], ["🙂", "جيد"], ["😐", "عادي"], ["😴", "متعب"]];
+    const did = [["🖍️", "رسمتُ"], ["📖", "قرأتُ"], ["🔢", "عددتُ"], ["🎮", "لعبتُ"]];
+    return '<p class="small" data-autoread>كيف كان يومك؟ ' + sayBtn("كيف كان يومك؟") + "</p>" +
+      '<div class="mood-row">' + faces.map(f => '<button data-action="yFace" data-v="' + f[0] + '" class="' + (yRef.face === f[0] ? "sel" : "") + '" aria-label="' + f[1] + '" aria-pressed="' + (yRef.face === f[0]) + '">' + f[0] + "</button>").join("") + "</div>" +
+      '<p class="small" style="margin-top:12px">ماذا فعلت؟</p><div class="chips">' +
+      did.map(x => '<button class="chip' + (yRef.did.includes(x[1]) ? " sel" : "") + '" data-action="yDid" data-v="' + x[1] + '" aria-pressed="' + yRef.did.includes(x[1]) + '">' + x[0] + " " + x[1] + "</button>").join("") + "</div>" +
+      '<div class="stack"><button class="btn block" data-action="yReflect"' + (yRef.face || yRef.did.length ? "" : " disabled") + ">احفظ ⭐</button></div>" + voiceNoteBtn();
+  }
+  function voiceNoteBtn() {
+    if (!SP() || !SP().canRecord()) return "";
+    const rec = SP().isRecording();
+    return '<button class="btn ' + (rec ? "accent" : "ghost") + ' block vn-btn" data-action="voiceNote">' + (rec ? "⏹️ أوقف التسجيل" : "🎙️ سجّل تأمّلك بصوتك") + "</button>" +
+      '<p class="small muted center" style="margin:4px 0 0">يبقى التسجيل على جهازك فقط.</p>';
+  }
+  function saveReflection(text, vn) {
+    const j = { date: today(), text };
+    if (vn) j.vn = vn;
+    S.journal.push(j);
+    reflectOpen = false; yRef = { face: "", did: [] };
+    dayRec().reflected = true;
+    save();
+    addXP(15, "تأمّل رائع");
+    render();
+  }
   function viewChallenges() {
     const rec = dayRec();
     const list = S.daily.list;
     const item = c => '<div class="challenge' + (c.done ? " done" : "") + '">' +
       '<button class="check' + (c.id === justDone ? " pop" : "") + '" data-action="toggle" data-id="' + esc(c.id) + '" aria-pressed="' + c.done + '" aria-label="' + (c.done ? "إلغاء الإنجاز: " : "إنجاز: ") + esc(c.text) + '">' + (c.done ? "✔" : "") + "</button>" +
-      '<div class="grow"><div class="ch-text">' + esc(c.text) + "</div>" + metaHTML(c) +
+      '<div class="grow"><div class="ch-text">' + (c.e ? '<span class="ch-emoji" aria-hidden="true">' + c.e + "</span> " : "") + esc(c.text) + (wantsRead() ? " " + sayBtn(c.say || c.text) : "") + "</div>" + (S.settings.young ? "" : metaHTML(c)) +
       (!c.done && c.type === "recall" ? '<button class="btn ghost sm" data-action="go" data-v="cards">🗂️ افتح البطاقات</button>' : "") +
       (!c.done && (c.type === "study" || c.type === "recall") && S.books.some(b => b.subject === c.subject) ? '<button class="btn ghost sm" data-action="tutorFor" data-s="' + esc(c.subject) + '">🤖 اسأل المعلم</button>' : "") +
       (!c.done && (c.type === "study" || c.type === "bonus") ? '<button class="btn ghost sm" data-action="focusFor" data-id="' + esc(c.id) + '" data-m="' + c.minutes + '" data-s="' + esc(c.subject) + '">▶ ابدأ بمؤقت</button>' : "") +
@@ -835,15 +981,18 @@
       (done.length ? '<div class="done-group">' + done.map(item).join("") + "</div>" : "") +
       (S.daily.rerolls < 1 && !done.length ? '<button class="linkbtn" data-action="reroll">🎲 لا تناسبني؟ غيّرها (مرة يومياً)</button>' : "") +
       "</section>" +
-      '<section class="card"><h3>🧠 استراحة ذهنية</h3><p class="small muted">لعبة قصيرة بين جلسات الدراسة (حتى ' + GAME_XP_CAP + ' ⭐ يومياً).</p>' +
+      '<section class="card"><h3>🧠 ' + (S.settings.young ? "ألعاب" : "استراحة ذهنية") + '</h3><p class="small muted">لعبة قصيرة بين جلسات الدراسة (حتى ' + GAME_XP_CAP + ' ⭐ يومياً).</p>' +
+      (S.settings.young || studentClass() <= 3 ? '<div class="grid-2 young-games"><button class="btn ghost big" data-action="startCount">🔢 كم عددها؟</button>' +
+        (SP() && SP().canSpeak() ? '<button class="btn ghost big" data-action="startLetters">🔤 اسمعْ واخترْ</button>' : '<button class="btn ghost big" data-action="startLetters">🔤 حروف وصور</button>') + "</div><br>" : "") +
       '<div class="grid-3"><button class="btn ghost" data-action="startMath">⚡ أرقام</button>' +
       '<button class="btn ghost" data-action="startQuiz">❓ معلومات</button>' +
       '<button class="btn ghost" data-action="startMemory">🃏 ذاكرة</button></div></section>' +
       '<section class="card" id="reflectCard"><h3>📓 تأمّل اليوم</h3>' +
       (rec.reflected ? '<p class="muted">كتبت تأمّل اليوم ✔ — الكتابة تثبّت ما تعلمته.</p>' :
         '<p class="small muted">' + prompt + "</p>" +
-        (reflectOpen ? '<textarea id="reflectText" maxlength="600" placeholder="اكتب بحرية…" aria-label="' + prompt + '"></textarea><div class="stack"><button class="btn block" data-action="reflect">احفظ (+15 ⭐)</button></div>' :
-          '<button class="btn ghost block" data-action="openReflect">✍️ اكتب تأمّلك (+15 ⭐)</button>')) + "</section>";
+        (S.settings.young ? youngReflect() :
+        (reflectOpen ? '<div class="field-mic"><textarea id="reflectText" maxlength="600" placeholder="اكتب أو تحدّث بحرية…" aria-label="' + prompt + '"></textarea>' + micBtn("reflectText") + '</div><div class="stack"><button class="btn block" data-action="reflect">احفظ (+15 ⭐)</button></div>' :
+          '<button class="btn ghost block" data-action="openReflect">✍️ اكتب تأمّلك (+15 ⭐)</button>') + voiceNoteBtn())) + "</section>";
   }
 
   /* ---------- مؤقت التركيز ---------- */
@@ -963,6 +1112,8 @@
     if (game && game.type === "math") return viewMath();
     if (game && game.type === "memory") return viewMemory();
     if (game && game.type === "quiz") return viewQuiz();
+    if (game && game.type === "count") return viewCount();
+    if (game && game.type === "letters") return viewLetters();
     return '<div class="card"><h2>🧠 استراحة ذهنية</h2>' +
       '<p class="muted small">ألعاب قصيرة ممتعة بين جلسات الدراسة. (الحد الأقصى ' + GAME_XP_CAP + " ⭐ يومياً من الألعاب)</p>" +
       '<button class="btn secondary" data-action="go" data-v="challenges">→ رجوع للتحديات</button></div>' +
@@ -1028,6 +1179,56 @@
         if (view === "games") render();
       }
     }, 250);
+    render();
+  }
+
+  /* «كم عددها؟»: عدّ الصور واختر الرقم (بلا مؤقت، بلا ✖ أحمر) */
+  const COUNT_EMOJI = ["🍎", "⭐", "🐟", "🌸", "🎈", "🐥", "🍋", "🚗", "⚽", "🦋"];
+  function countRound() {
+    const n = 1 + Math.floor(Math.random() * 10), e = COUNT_EMOJI[Math.floor(Math.random() * COUNT_EMOJI.length)];
+    const opts = new Set([n]);
+    while (opts.size < 3) { const d = Math.max(1, Math.min(10, n + Math.floor(Math.random() * 5) - 2)); opts.add(d); }
+    return { n, e, opts: shuffle([...opts]) };
+  }
+  function startCount() { game = { type: "count", i: 0, score: 0, q: countRound(), tries: 0, over: false }; render(); }
+  function viewCount() {
+    const g = game;
+    if (g.over) return '<div class="card center"><div class="empty-emoji">🌟</div><h2 data-autoread>أحسنت! عددت ' + g.score + " مرات صحيحة</h2>" +
+      '<button class="btn" data-action="startCount">مرة أخرى</button> <button class="btn ghost" data-action="exitGame">رجوع</button></div>';
+    const ar = ["", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩", "١٠"];
+    return '<div class="card center">' + gameHead("🔢 كم عددها؟", '<span class="muted small">' + (g.i + 1) + " / 10</span>") +
+      '<p data-autoread data-say="كَمْ عَدَدُهَا؟">كم عددها؟ ' + sayBtn("كَمْ عَدَدُهَا؟") + "</p>" +
+      '<div class="count-pics" aria-label="' + g.q.n + ' صور">' + Array.from({ length: g.q.n }, () => '<span aria-hidden="true">' + g.q.e + "</span>").join("") + "</div>" +
+      '<div class="grid-3 big-tiles">' + g.q.opts.map(o => '<button class="btn ghost" data-action="countAns" data-v="' + o + '" aria-label="' + o + '">' + ar[o] + "<small>" + o + "</small></button>").join("") + "</div>" +
+      (g.tries ? '<p class="small muted">حاول مرة أخرى، عُدّ ببطء 👆</p>' : "") + "</div>";
+  }
+  /* «اسمعْ واخترْ»: يُنطق الحرف وكلمته، والطفل يختار من 3 بطاقات كبيرة */
+  function lettersRound() {
+    const pickL = shuffle(LETTERS).slice(0, 3);
+    return { target: pickL[0], opts: shuffle(pickL) };
+  }
+  function startLetters() { game = { type: "letters", i: 0, score: 0, q: lettersRound(), tries: 0, over: false }; render(); setTimeout(() => sayLetter(), 300); }
+  function sayLetter() { if (game && game.type === "letters" && !game.over) sayNow("أين حرف " + game.q.target[0] + "؟ " + game.q.target[0] + "، مثل " + game.q.target[1]); }
+  function viewLetters() {
+    const g = game;
+    if (g.over) return '<div class="card center"><div class="empty-emoji">🌟</div><h2 data-autoread>أحسنت! عرفت ' + g.score + " حروف</h2>" +
+      '<button class="btn" data-action="startLetters">مرة أخرى</button> <button class="btn ghost" data-action="exitGame">رجوع</button></div>';
+    const canSay = SP() && SP().canSpeak();
+    return '<div class="card center">' + gameHead("🔤 " + (canSay ? "اسمعْ واخترْ" : "حروف وصور"), '<span class="muted small">' + (g.i + 1) + " / 10</span>") +
+      (canSay ? '<button class="btn big block" data-action="sayLetter">🔊 اسمعْ الحرف</button>' :
+        '<p class="letter-prompt">أين حرف <b>' + esc(g.q.target[0]) + "</b>؟</p>") +
+      '<div class="grid-3 big-tiles">' + g.q.opts.map(o => '<button class="btn ghost" data-action="letterAns" data-v="' + esc(o[0]) + '" aria-label="' + esc(o[0] + " " + o[1]) + '">' + esc(o[0]) + "<small>" + o[2] + " " + esc(o[1]) + "</small></button>").join("") + "</div>" +
+      (g.tries ? '<p class="small muted">قريب! اسمع مرة أخرى 👂</p>' : "") + "</div>";
+  }
+  function youngAnswer(ok, nextRound) {
+    const g = game;
+    if (ok) {
+      if (!g.tries) g.score++;
+      fx("right");
+      g.i++; g.tries = 0;
+      if (g.i >= 10) { g.over = true; gameXP(g.score * 2); fx(g.score >= 8 ? "record" : "gameEnd"); }
+      else g.q = nextRound();
+    } else { g.tries++; Haptics.buzz(20); }
     render();
   }
 
@@ -1101,7 +1302,8 @@
     const badgesMore = sortedB.slice(shownN).map(badgeHtml).join("");
 
     const journal = S.journal.slice().reverse().slice(0, 10).map(j =>
-      '<li><span class="small muted">' + esc(j.date) + "</span><br>" + esc(j.text) + "</li>").join("");
+      '<li><span class="small muted">' + esc(j.date) + "</span><br>" + esc(j.text) +
+      (j.vn ? ' <button class="chip small" data-action="playVn" data-id="' + esc(j.vn) + '">▶️ استمع</button>' : "") + "</li>").join("");
 
     return '<div class="card"><h2>🗺️ رحلة العودة</h2>' +
       '<p class="muted small">درست حتى الآن <b>' + arDays(st.activeDays) + "</b> · أفضل سلسلة: <b>" + arDays(st.bestStreak) + "</b></p>" +
@@ -1138,6 +1340,7 @@
       [["auto", "🌓 تلقائي"], ["light", "☀️ فاتح"], ["dark", "🌙 داكن"]].map(t =>
         '<button role="radio" aria-checked="' + (Theme.get() === t[0]) + '" class="' + (Theme.get() === t[0] ? "sel" : "") + '" data-action="setTheme" data-t="' + t[0] + '">' + t[1] + "</button>").join("") +
       "</div></div>" +
+      speechCard() +
       remindersCard() +
       soundCard() +
       '<div class="card"><h3>💾 نسخة احتياطية</h3><p class="small muted">بياناتك محفوظة على جهازك فقط. انسخها احتياطياً لتنقلها لجهاز آخر.</p>' +
@@ -1149,6 +1352,25 @@
       '<details class="card danger-zone"><summary><b>⚠️ المنطقة الخطرة</b></summary><p class="small muted">مسح كل تقدّمك نهائياً. صدّر نسخة احتياطية أولاً.</p>' +
       '<button class="btn outline-danger block" data-action="reset">مسح كل البيانات</button></details>' +
       '<button class="btn ghost block" data-action="go" data-v="home">→ رجوع للرئيسية</button>';
+  }
+
+  /* ---------- القراءة والكلام وسهولة الاستخدام ---------- */
+  function speechCard() {
+    const st = S.settings;
+    const sw = (k, label, hint) => '<button type="button" class="switch-row" data-action="spPref" data-k="' + k + '" role="switch" aria-checked="' + !!st[k] + '">' +
+      '<span class="grow"><b>' + label + "</b>" + (hint ? '<span class="small muted">' + hint + "</span>" : "") + '</span><span class="switch" aria-hidden="true"></span></button>';
+    const noVoice = SP() && !SP().canSpeak();
+    return '<div class="card"><h3>🗣️ القراءة والكلام</h3>' +
+      sw("readAloud", "🔊 اقرأ لي بصوت", "يقرأ التعليمات والأسئلة تلقائياً") +
+      (noVoice ? '<p class="small care-note">لا يوجد صوت عربي على هذا الجهاز. لتفعيله: الإعدادات ← اللغة ← تحويل النص إلى كلام ← نزّل العربية.</p>' : "") +
+      sw("voiceIn", "🎤 تحدّث بدل الكتابة", st.stt === "local" ? "مضبوط على: التسجيل على الجهاز فقط" : "زر ميكروفون بجانب خانات الكتابة") +
+      (st.stt ? '<button class="linkbtn" style="margin:0 0 8px" data-action="sttReset">تغيير موافقة الميكروفون</button>' : "") +
+      sw("young", "🧒 واجهة مبسّطة", "صور أكبر، كلمات أقل، أنشطة قصيرة") +
+      sw("together", "👨‍👧 أستخدم التطبيق مع أحد من عائلتي", "نصائح صغيرة للمرافق في كل نشاط") +
+      sw("simple", "🪶 بسّط كلام المعلم الذكي", "جمل قصيرة وكلمات سهلة") +
+      "</div>" +
+      (st.together || st.young ? '<div class="card"><h3>👨‍👩‍👧 نصائح للمرافق (دقيقة واحدة)</h3><ul class="list-plain small">' +
+        "<li>💜 امدحْ المحاولة، لا النتيجة.</li><li>🤲 صحّحْ بلطف، ودون استعجال.</li><li>⏱️ توقّفوا بعد 10 دقائق.</li><li>😴 إذا تعب الطفل، توقّفوا فوراً — غداً يوم جديد.</li></ul></div>" : "");
   }
 
   /* ---------- الصوت والاهتزاز ---------- */
@@ -1256,7 +1478,7 @@
       '<div class="stars" role="radiogroup" aria-label="التقييم">' + [1, 2, 3, 4, 5].map(n =>
         '<button class="' + (n <= fbDraft.rating ? "on" : "") + '" data-action="fbStar" data-n="' + n + '" aria-label="' + n + ' نجوم">★</button>').join("") + "</div>" +
       '<div class="chips">' + FB_KINDS.map(k => '<button class="chip' + (fbDraft.kind === k ? " sel" : "") + '" data-action="fbKind" data-k="' + k + '">' + k + "</button>").join("") + "</div>" +
-      '<label for="fbText">رسالتك</label><textarea id="fbText" maxlength="1000" placeholder="ما الذي أعجبك؟ ما الذي تتمنى أن نضيفه أو نغيّره؟"></textarea><br><br>' +
+      '<label for="fbText">رسالتك</label><div class="field-mic"><textarea id="fbText" maxlength="1000" placeholder="ما الذي أعجبك؟ ما الذي تتمنى أن نضيفه أو نغيّره؟"></textarea>' + micBtn("fbText") + '</div><br><br>' +
       '<button class="btn block" data-action="sendFeedback">أرسل رأيك ✉️</button></div>';
   }
   function sendFeedback(text) {
@@ -1326,14 +1548,15 @@
     const subs = S.profile.subjects.length ? S.profile.subjects : ["عام"];
     const form = '<section class="card" id="cardForm"><h3>➕ بطاقة جديدة</h3>' +
       '<label for="cardSub">المادة</label><select id="cardSub">' + subs.map(x => "<option" + (x === lastCardSub ? " selected" : "") + ">" + esc(x) + "</option>").join("") + "</select>" +
-      '<label for="cardQ">السؤال</label><textarea id="cardQ" dir="auto" maxlength="300" style="min-height:64px" placeholder="مثلاً: ما قانون نيوتن الثاني؟"></textarea>' +
-      '<label for="cardA">الجواب</label><textarea id="cardA" dir="auto" maxlength="500" style="min-height:64px" placeholder="القوة = الكتلة × التسارع"></textarea>' +
+      '<label for="cardQ">السؤال</label><div class="field-mic"><textarea id="cardQ" dir="auto" maxlength="300" style="min-height:64px" placeholder="مثلاً: ما قانون نيوتن الثاني؟"></textarea>' + micBtn("cardQ") + "</div>" +
+      '<label for="cardA">الجواب</label><div class="field-mic"><textarea id="cardA" dir="auto" maxlength="500" style="min-height:64px" placeholder="القوة = الكتلة × التسارع"></textarea>' + micBtn("cardA") + "</div>" +
       '<div class="stack"><button class="btn block" data-action="addCard">أضف البطاقة (+5 ⭐)</button>' +
       (S.cards.length ? '<button class="linkbtn" data-action="closeCardForm">إغلاق</button>' : "") + "</div></section>";
     if (!S.cards.length) {
       return '<section class="card center"><div class="empty-emoji" aria-hidden="true">🗂️</div><h2>بطاقاتي</h2>' +
         '<p class="muted">اكتب سؤالاً من درسك وجوابه، والتطبيق يذكّرك بمراجعته في الوقت المناسب حتى يثبت في ذاكرتك.</p>' +
-        (cardFormOpen ? "" : '<button class="btn big block" data-action="openCardForm">➕ اصنع أول بطاقة</button>') + HOW_CARDS + "</section>" +
+        (cardFormOpen ? "" : '<button class="btn big block" data-action="openCardForm">➕ اصنع أول بطاقة</button>') +
+        (studentClass() <= 3 || S.settings.young ? '<div class="stack"><button class="btn ghost big block" data-action="addLetters">🔤 أضف بطاقات الحروف (28)</button></div>' : "") + HOW_CARDS + "</section>" +
         (cardFormOpen ? form : "");
     }
     const counts = [1, 2, 3, 4, 5, 6].map(b => S.cards.filter(c => c.box === b).length);
@@ -1375,7 +1598,7 @@
       '<div class="game-head"><button class="icon-x" data-action="endReview" aria-label="إنهاء المراجعة">✕</button>' +
       '<div class="progress grow"><div style="width:' + Math.round(r.done / total * 100) + '%"></div></div><span class="muted small">' + r.queue.length + "</span></div>" +
       '<span class="tag">' + esc(c.subject) + "</span>" +
-      '<div class="flash" dir="auto">' + esc(c.q) + "</div>" +
+      '<div class="flash" dir="auto" data-autoread>' + esc(c.q) + "</div>" + (wantsRead() ? sayBtn(c.q) : "") +
       (r.show ?
         '<div class="flash answer" dir="auto">' + esc(c.a) + "</div>" +
         '<div class="grid-2"><button class="btn good big" data-action="grade" data-ok="1">✔ عرفتها</button>' +
@@ -1758,10 +1981,11 @@
         '<button class="btn ghost" data-action="aiMode" data-m="quiz"' + (aiBusy ? " disabled" : "") + ">❓ اختبرني</button>" +
         '<button class="btn ghost" data-action="aiMode" data-m="cards"' + (aiBusy ? " disabled" : "") + ">🗂️ اصنع بطاقات</button></div>" +
         (chat.length || aiBusy ? '<div class="chat-log" id="chatLog" aria-live="polite">' + chat.map(m =>
-          '<div class="bubble ' + (m.role === "user" ? "me" : "ai") + '" dir="auto">' + (m.role === "user" ? esc(m.text) : mdLite(m.text)) + "</div>").join("") +
+          '<div class="bubble ' + (m.role === "user" ? "me" : "ai") + '" dir="auto">' + (m.role === "user" ? esc(m.text) : mdLite(m.text) + sayBtn(m.text)) + "</div>").join("") +
           (aiBusy ? '<div class="bubble ai typing">' + esc(aiStatus || "المعلم يكتب") + ' <span class="dots-anim" aria-hidden="true"><i></i><i></i><i></i></span></div>' : "") + "</div>" : "") +
-        '<div class="chat-input"><textarea id="aiInput" dir="auto" rows="1" maxlength="1500" placeholder="اسأل عن أي شيء في الكتاب…" aria-label="سؤالك للمعلم"></textarea>' +
+        '<div class="chat-input">' + micBtn("aiInput") + '<textarea id="aiInput" dir="auto" rows="1" maxlength="1500" placeholder="اسأل عن أي شيء في الكتاب…" aria-label="سؤالك للمعلم"></textarea>' +
         '<button class="btn" data-action="aiSend" aria-label="إرسال"' + (aiBusy ? " disabled" : "") + ">➤</button></div>" +
+        '<button type="button" class="switch-row" data-action="aiSimple" role="switch" aria-checked="' + !!S.settings.simple + '"><span class="grow"><b>🪶 بسّط الكلام</b><span class="small muted">جمل قصيرة وكلمات سهلة</span></span><span class="switch" aria-hidden="true"></span></button>' +
         '<button type="button" class="switch-row" data-action="aiDeep" role="switch" aria-checked="' + tutorDeep + '"><span class="grow"><b>🧠 شرح أعمق</b><span class="small muted">أبطأ قليلاً — للدروس الصعبة</span></span><span class="switch" aria-hidden="true"></span></button>' +
         (chat.length ? '<button class="linkbtn" data-action="aiClear">🧹 محادثة جديدة</button>' : "") +
         (!online ? '<p class="small care-note">📶 المعلم الذكي يحتاج إنترنت. الكتاب نفسه متاح لك دائماً.</p>' : "") +
@@ -1831,7 +2055,7 @@
   function bookPayload(b, extra) {
     return Object.assign({
       fileId: b.kind === "file" ? b.fileId : undefined, url: b.kind === "link" ? b.url : undefined, mime: b.mime,
-      title: b.title, subject: b.subject, grade: classLabel(studentClass()) || S.profile.grade
+      title: b.title, subject: b.subject, grade: classLabel(studentClass()) || S.profile.grade, simple: !!S.settings.simple || !!S.settings.young
     }, extra);
   }
   async function aiCall(b, path, extra) {
@@ -1963,7 +2187,7 @@
     const q = g.qs[g.i];
     return '<div class="card">' + gameHead("❓ " + esc(q.s), '<span class="muted small">' + (g.i + 1) + " / 10 · ✔ " + g.score + "</span>") +
       '<div class="progress" style="margin:4px 0 14px"><div style="width:' + (g.i / 10 * 100) + '%"></div></div>' +
-      '<h3 style="margin-bottom:14px">' + esc(q.q) + "</h3>" +
+      '<h3 style="margin-bottom:14px" data-autoread>' + esc(q.q) + "</h3>" + (wantsRead() ? sayBtn(q.q) : "") +
       '<div class="opts">' + q.order.map(idx => {
         let cls = "opt";
         if (g.picked !== null) { if (idx === q.a) cls += " right"; else if (idx === g.picked) cls += " wrong"; }
@@ -2055,6 +2279,7 @@
       if (game && game.type === "math" && !game.over) { clearInterval(mathInt); }
       game = null;
       review = null;
+      if (SP()) { SP().stop(); if (SP().isListening()) SP().stopListening(); }
       view = navBtn.dataset.view === "cards" ? studyTab : navBtn.dataset.view;
       render();
       return;
@@ -2122,13 +2347,9 @@
       case "reroll": buildDaily(S.daily.rerolls + 1); toast("تحديات جديدة 🎲"); render(); break;
       case "reflect": {
         const txt = ($("#reflectText").value || "").trim();
-        if (txt.length < 5) { toast("اكتب جملة على الأقل 🙂"); return; }
-        S.journal.push({ date: today(), text: txt });
-        reflectOpen = false;
-        dayRec().reflected = true;
-        save();
-        addXP(15, "تأمّل رائع");
-        render();
+        if (txt.length < 2) { toast("اكتب أو تحدّث بكلمة على الأقل 🙂"); return; }
+        if (SP() && SP().isListening()) SP().stopListening();
+        saveReflection(txt);
         break;
       }
       case "claimWeekly": {
@@ -2233,6 +2454,63 @@
       case "grade": if (el.dataset.ok === "1") fx("right"); gradeCard(el.dataset.ok === "1"); break;
       case "endReview": review = null; render(); break;
       case "share": shareProgress(); break;
+      case "say": if (SP()) { SP().stop(); sayNow(el.dataset.t); } break;
+      case "mic": startMic(el.dataset.target); break;
+      case "micCloud": case "micLocal": {
+        S.settings.stt = a === "micCloud" ? "cloud" : "local"; save(); closeModal();
+        const id = pendingMic; pendingMic = null;
+        if (id && a === "micCloud") setTimeout(() => startMic(id), 150);
+        else if (a === "micLocal") toast("حسناً 💜 يمكنك تسجيل صوتك في «تأمّل اليوم»، ويبقى على جهازك");
+        break;
+      }
+      case "sttReset": S.settings.stt = ""; save(); render(); toast("سنسألك مرة أخرى عند استخدام 🎤"); break;
+      case "spPref": {
+        const k = el.dataset.k;
+        S.settings[k] = !S.settings[k];
+        if (k === "young") S.daily = S.daily && !S.daily.list.some(c => c.done) ? null : S.daily;
+        save(); render();
+        if (k === "readAloud" && S.settings.readAloud) setTimeout(() => sayNow("سنقرأ لك التعليمات بصوت"), 100);
+        break;
+      }
+      case "aiSimple": { const l = $("#tutorLesson"); if (l) tutorLesson = l.value; S.settings.simple = !S.settings.simple; save(); render(); break; }
+      case "yFace": yRef.face = el.dataset.v; render(); break;
+      case "yDid": { const v = el.dataset.v, i2 = yRef.did.indexOf(v); if (i2 >= 0) yRef.did.splice(i2, 1); else yRef.did.push(v); render(); break; }
+      case "yReflect": if (yRef.face || yRef.did.length) saveReflection([yRef.face].concat(yRef.did).filter(Boolean).join(" · ")); break;
+      case "voiceNote": {
+        if (!SP() || !SP().canRecord()) return;
+        if (SP().isRecording()) { SP().stopRecording(); break; }
+        SP().stop();
+        SP().startRecording().then(async blob => {
+          if (!blob || !blob.size) { render(); return; }
+          const id = "vn" + Date.now().toString(36);
+          try { await idbPut(id, blob); } catch (e) { toast("لا توجد مساحة كافية لحفظ التسجيل"); render(); return; }
+          saveReflection("🎙️ تسجيل صوتي", id);
+        }).catch(() => { toast("اسمح للتطبيق باستخدام الميكروفون من إعدادات الهاتف"); render(); });
+        setTimeout(render, 150);
+        break;
+      }
+      case "playVn": {
+        idbGet(el.dataset.id).then(blob => {
+          if (!blob) { toast("لم نجد التسجيل على هذا الجهاز"); return; }
+          const url = URL.createObjectURL(blob), au = new Audio(url);
+          au.onended = () => URL.revokeObjectURL(url);
+          au.play().catch(() => toast("تعذّر تشغيل التسجيل"));
+        }).catch(() => {});
+        break;
+      }
+      case "startCount": view = "games"; startCount(); break;
+      case "countAns": if (game && game.type === "count") youngAnswer(+el.dataset.v === game.q.n, countRound); break;
+      case "startLetters": view = "games"; startLetters(); break;
+      case "sayLetter": sayLetter(); break;
+      case "letterAns":
+        if (game && game.type === "letters") { const ok = el.dataset.v === game.q.target[0]; youngAnswer(ok, lettersRound); if (ok) setTimeout(sayLetter, 500); else setTimeout(sayLetter, 300); }
+        break;
+      case "addLetters": {
+        if (S.cards.some(c => c.deck === "letters")) { toast("بطاقات الحروف موجودة ✔"); break; }
+        LETTERS.forEach((l, i2) => S.cards.push({ id: "lt" + i2 + Date.now().toString(36), subject: "اللغة العربية", q: l[0], a: l[0] + " — " + l[1] + " " + l[2], box: 1, due: today(), deck: "letters" }));
+        save(); fx("complete"); toast("أضفنا 28 بطاقة للحروف 🔤"); render();
+        break;
+      }
       case "remindYes": enableReminders(); break;
       case "remindNo": S.reminders.asks = Math.min(2, S.reminders.asks + 1); S.reminders.askedOn = today(); save(); render(); break;
       case "remindHelpful":
@@ -2336,6 +2614,8 @@
         const k = el.dataset.k, v = el.dataset.v;
         if (k === "lvl") { const steps = obSteps(); ob.levels[onboardSel[+steps[ob.step].split(":")[1]]] = +v; }
         else if (k === "minutes" || k === "away" || k === "cls") ob[k] = +v;
+        else if (k === "read") ob.read = v === "1";
+        else if (k === "who") ob.who = v;
         else if (k === "grade") { if (ob.grade !== v) ob.cls = 0; ob.grade = v; const cl = GRADE_INFO[v].classes; if (cl.length === 1) ob.cls = cl[0]; }
         else ob[k] = (ob[k] === v && k === "when") ? "" : v;
         renderOnboarding();
@@ -2484,6 +2764,7 @@
   syncThemeUI();
 
   if (window.Sound) Sound.init(() => S.settings);
+  if (SP()) { SP().init(); SP().onReady(() => { if (S.profile) render(); else renderOnboarding(); }); }
   window.addEventListener("online", () => { if (view === "books") render(); });
   window.addEventListener("offline", () => { if (view === "books") render(); });
 
