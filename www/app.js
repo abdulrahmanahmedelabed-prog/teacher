@@ -23,7 +23,8 @@
     feedbackAsked: false,
     reviews: 0,
     weeklyClaimed: {},
-    timer: null             // {end, minutes, subject}
+    timer: null,            // {end, minutes, subject}
+    settings: { sound: true, volume: 0.6, haptics: true, quiet: true, ambient: false }
   };
 
   function load() {
@@ -67,6 +68,13 @@
       st.profile.name = str(st.profile.name).slice(0, 30) || "طالب";
       st.profile.minutes = Math.min(240, Math.max(10, num(st.profile.minutes) || 45));
     }
+    const defSet = { sound: true, volume: 0.6, haptics: true, quiet: true, ambient: false };
+    const set0 = st.settings && typeof st.settings === "object" ? st.settings : {};
+    st.settings = {
+      sound: set0.sound !== false, volume: Math.min(1, Math.max(0, typeof set0.volume === "number" ? set0.volume : defSet.volume)),
+      haptics: set0.haptics !== false, quiet: set0.quiet !== false, ambient: set0.ambient === true
+    };
+    if (st.profile && st.profile.cls != null) st.profile.cls = Math.min(13, Math.max(1, Math.round(num(st.profile.cls)) || 0)) || undefined;
     st.daily = null; // يُعاد توليد تحديات اليوم
     if (st.timer && !(st.timer.end > 0 && st.timer.minutes > 0)) st.timer = null;
     return st;
@@ -200,7 +208,7 @@
     if (after > before) {
       confetti();
       celebrate("🎉", "المستوى " + after + ": " + levelInfo(S.xp).title,
-        "لقب جديد تستحقه! كل مستوى يقرّبك من هدفك" + (S.profile && S.profile.goal ? " «" + S.profile.goal + "»" : "") + ". استمر، أنت تتقدّم فعلاً.");
+        "لقب جديد تستحقه! كل مستوى يقرّبك من هدفك" + (S.profile && S.profile.goal ? " «" + S.profile.goal + "»" : "") + ". استمر، أنت تتقدّم فعلاً.", null, "levelup");
     }
     checkBadges();
   }
@@ -214,7 +222,7 @@
     const b = newly[0];
     setTimeout(() => {
       confetti();
-      celebrate(b.icon, "وسام جديد: " + b.name, b.desc);
+      celebrate(b.icon, "وسام جديد: " + b.name, b.desc, null, "badge");
     }, 400);
   }
 
@@ -236,7 +244,7 @@
     const subs = subjectPlan(st.stage);
     const offset = dayNumber(key);
     const subjectAt = i => subs[(offset + i) % subs.length];
-    const qCount = 3 + st.stage * 2;
+    const qCount = studentClass() <= 3 ? Math.min(5, 3 + st.stage) : 3 + st.stage * 2;
 
     const list = [];
     // تمييز العدد: 3-10 جمع، 11 فما فوق مفرد منصوب
@@ -319,6 +327,7 @@
     const rec = dayRec();
     ch.done = true;
     rec.ch++;
+    fx("complete");
     addXP(ch.xp);
     justDone = ch.id;
     if (S.daily.list.every(c => c.done) && !S.daily.fullAwarded && !rec.full) {
@@ -327,6 +336,7 @@
       S.fullDays++;
       save();
       addXP(30, "يوم مثالي!");
+      fx("perfect");
       confetti();
     }
     save();
@@ -412,13 +422,22 @@
       if (!$("#modal").classList.contains("hidden") || !celebrateQ.length) return;
       const a = celebrateQ.shift();
       showModal(a[0], a[1], a[2], a[3], "celebrate");
+      if (a[4]) fx(a[4]);
     }, 260);
   }
-  /* الاحتفالات تنتظر دورها حتى لا تتصادم النوافذ (مستوى + وسام + جلسة) */
+  /* صوت + اهتزاز معاً (كلاهما اختياري من الإعدادات، والمعلومة دائماً مرئية أيضاً) */
+  const HAPTIC = { complete: 15, perfect: [20, 40, 20, 40, 60], levelup: [30, 50, 30, 50, 80], badge: [20, 60, 40], focusStart: 20,
+    focusEnd: [120, 80, 120], right: 10, softNo: 30, record: [20, 40, 60] };
+  function fx(id, opt) {
+    if (window.Sound) Sound.play(id, opt);
+    if (window.Haptics && HAPTIC[id]) Haptics.buzz(HAPTIC[id]);
+  }
+  /* الاحتفالات تنتظر دورها حتى لا تتصادم النوافذ (مستوى + وسام + جلسة)، وصوتها يُعزف عند ظهورها */
   const celebrateQ = [];
-  function celebrate(emoji, title, body, buttons) {
-    if (!$("#modal").classList.contains("hidden")) { celebrateQ.push([emoji, title, body, buttons]); return; }
+  function celebrate(emoji, title, body, buttons, snd) {
+    if (!$("#modal").classList.contains("hidden")) { celebrateQ.push([emoji, title, body, buttons, snd]); return; }
     showModal(emoji, title, body, buttons, "celebrate");
+    if (snd) fx(snd);
   }
   const reducedMotion = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
   function pulse(el) { if (!el) return; el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); }
@@ -438,7 +457,7 @@
       f.style.transform = "translate(calc(-50% + " + (b.left + b.width / 2 - a.left - a.width / 2) + "px), " + (b.top + b.height / 2 - a.top - a.height / 2) + "px) scale(.6)";
       f.style.opacity = "0.3";
     }));
-    setTimeout(() => { f.remove(); pulse(pill); }, 700);
+    setTimeout(() => { f.remove(); pulse(pill); if (window.Sound) Sound.play("coin"); }, 700);
   }
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && !$("#modal").classList.contains("hidden")) { pendingConfirm = null; closeModal(); }
@@ -464,20 +483,22 @@
       setTimeout(() => c.remove(), 3800);
     }
   }
-  function beep() {
+  /* تنبيه نهاية الجلسة في تطبيق Android حتى لو كانت الشاشة مطفأة */
+  function notifPlugin() { return isNative() && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }
+  async function scheduleFocusNotif(end) {
+    const L = notifPlugin();
+    if (!L) return;
     try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new Ctx();
-      [0, 0.25, 0.5].forEach((t, i) => {
-        const o = ctx.createOscillator(), g = ctx.createGain();
-        o.frequency.value = 660 + i * 220;
-        o.connect(g); g.connect(ctx.destination);
-        g.gain.setValueAtTime(0.25, ctx.currentTime + t);
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.22);
-        o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.23);
-      });
-    } catch (e) { /* لا صوت */ }
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      let p = await L.checkPermissions();
+      if (p.display !== "granted") p = await L.requestPermissions();
+      if (p.display !== "granted") return;
+      await L.schedule({ notifications: [{ id: 7001, title: "رحلة العودة", body: "أحسنت! انتهت جلستك 🌟", schedule: { at: new Date(end), allowWhileIdle: true } }] });
+    } catch (e) { /* بدون إشعار */ }
+  }
+  async function cancelFocusNotif() {
+    const L = notifPlugin();
+    if (!L) return;
+    try { await L.cancel({ notifications: [{ id: 7001 }] }); } catch (e) {}
   }
 
   /* ================= الشاشات ================= */
@@ -535,10 +556,23 @@
 
   /* ---------- البداية: سؤال واحد في كل شاشة ---------- */
   const GRADES = ["ابتدائي", "إعدادي", "ثانوي", "توجيهي / ثانوية عامة", "جامعة"];
+  const GRADE_INFO = {
+    "ابتدائي": { label: "ابتدائي <span class=\"muted small\">(الصف 1 – 6)</span>", classes: [1, 2, 3, 4, 5, 6] },
+    "إعدادي": { label: "إعدادي <span class=\"muted small\">(الصف 7 – 9)</span>", classes: [7, 8, 9] },
+    "ثانوي": { label: "ثانوي <span class=\"muted small\">(الصف 10 – 11)</span>", classes: [10, 11] },
+    "توجيهي / ثانوية عامة": { label: "توجيهي <span class=\"muted small\">(الصف 12)</span>", classes: [12] },
+    "جامعة": { label: "جامعة", classes: [13] }
+  };
+  const CLASS_NAMES = ["", "الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر", "الحادي عشر", "الثاني عشر", "جامعة"];
+  const gradeOfClass = c => GRADES.find(g => GRADE_INFO[g].classes.includes(c)) || GRADES[2];
+  const classLabel = c => c === 13 ? "جامعة" : c ? "الصف " + CLASS_NAMES[c] : "";
+  // الصف الحالي (للملفات القديمة: تقدير من المرحلة)
+  const studentClass = () => (S.profile && S.profile.cls) || ({ "ابتدائي": 4, "إعدادي": 8, "ثانوي": 10, "توجيهي / ثانوية عامة": 12, "جامعة": 13 })[S.profile && S.profile.grade] || 10;
   const WHENS = ["بعد الفجر", "بعد الإفطار", "بعد العصر", "بعد المغرب", "قبل النوم"];
-  const OB0 = () => ({ step: 0, name: "", grade: "", minutes: 45, when: "", away: null, levels: {} });
+  const OB0 = () => ({ step: 0, name: "", grade: "", cls: 0, minutes: 45, when: "", away: null, levels: {} });
   let ob = OB0();
-  const obSteps = () => ["name", "grade", "subjects", "time", "away"].concat(onboardSel.map((s, i) => "lvl:" + i));
+  const obSteps = () => ["name", "grade"].concat(ob.grade && GRADE_INFO[ob.grade].classes.length > 1 ? ["class"] : [])
+    .concat(["subjects", "time", "away"]).concat(onboardSel.map((s, i) => "lvl:" + i));
 
   function renderOnboarding() {
     $("#nav").style.display = "none";
@@ -554,8 +588,12 @@
       nextLabel = "لنبدأ";
     } else if (k === "grade") {
       body = '<div class="ob-emoji" aria-hidden="true">🎓</div><h2>في أي مرحلة دراسية أنت؟</h2><div class="choices">' +
-        GRADES.map(g => choice("grade", g, g, ob.grade === g, true)).join("") + "</div>";
+        GRADES.map(g => choice("grade", g, GRADE_INFO[g].label, ob.grade === g, true)).join("") + "</div>";
       showNext = !!ob.grade;
+    } else if (k === "class") {
+      body = '<div class="ob-emoji" aria-hidden="true">🏫</div><h2>في أي صف أنت؟</h2><p class="muted">لنختار لك أسئلة وتحديات تناسب عمرك.</p><div class="class-grid">' +
+        GRADE_INFO[ob.grade].classes.map(c => '<button type="button" class="choice center' + (ob.cls === c ? " sel" : "") + '" data-action="obSet" data-k="cls" data-v="' + c + '" data-auto="1" aria-pressed="' + (ob.cls === c) + '">' + classLabel(c) + "</button>").join("") + "</div>";
+      showNext = !!ob.cls;
     } else if (k === "subjects") {
       body = '<div class="ob-emoji" aria-hidden="true">📚</div><h2>ما المواد التي تريد العودة إليها؟</h2><p class="muted">اختر مادة أو أكثر — يمكنك تغييرها لاحقاً.</p><div class="chips">' +
         SUBJECTS.map(x => '<button type="button" class="chip' + (onboardSel.includes(x) ? " sel" : "") + '" data-action="obSubject" data-s="' + esc(x) + '" aria-pressed="' + onboardSel.includes(x) + '">' + esc(x) + "</button>").join("") + "</div>";
@@ -573,7 +611,11 @@
       body = '<p class="muted small center">مادة ' + (i + 1) + " من " + onboardSel.length + '</p><h2 class="center">كيف تشعر بمستواك في<br><span class="hl">' + esc(sb) + "</span>؟</h2>" +
         '<div class="choices faces">' + LEVELS.map((l, j) => choice("lvl", j + 1, '<span class="face" aria-hidden="true">' + l.e + "</span>" + l.t, ob.levels[sb] === j + 1, true)).join("") + "</div>";
       showNext = !!ob.levels[sb];
-      if (i === onboardSel.length - 1) nextLabel = "ابدأ الرحلة ✨";
+      if (i === onboardSel.length - 1) {
+        nextLabel = "ابدأ الرحلة ✨";
+        body += '<button type="button" class="snd-note" data-action="obSound" role="switch" aria-checked="' + S.settings.sound + '">' +
+          (S.settings.sound ? "🔊 أصوات تشجيع خفيفة: مفعّلة" : "🔕 الأصوات: متوقفة") + ' <span class="muted">— يمكنك تغييرها من الإعدادات</span></button>';
+      }
     }
     app.innerHTML =
       '<section class="onboard">' +
@@ -601,7 +643,7 @@
   function finishOnboarding() {
     const levels = {};
     onboardSel.forEach(x => { levels[x] = ob.levels[x] || 3; });
-    S.profile = { name: ob.name, grade: ob.grade || GRADES[2], subjects: onboardSel.slice(), minutes: ob.minutes, goal: "", when: ob.when, lastLesson: {} };
+    S.profile = { name: ob.name, grade: ob.grade || GRADES[2], cls: ob.cls || undefined, subjects: onboardSel.slice(), minutes: ob.minutes, goal: "", when: ob.when, lastLesson: {} };
     S.assess.push({ date: today(), away: ob.away == null ? 0 : ob.away, levels });
     S.daily = null;
     const away = ob.away;
@@ -610,6 +652,7 @@
     view = "home";
     render();
     addXP(20);
+    fx("focusStart");
     showModal("✨", "مرحباً " + S.profile.name + "!", welcomePlan(levels, away));
   }
   function welcomePlan(levels, away) {
@@ -726,6 +769,7 @@
     if (st.gapDays < 2 || S.welcomedOn === today() || !$("#modal").classList.contains("hidden")) return false;
     S.welcomedOn = today();
     save();
+    fx("welcome");
     showModal("💜", "أهلاً بعودتك يا " + S.profile.name + "!", "الغياب جزء من الرحلة، والمهم أنك هنا الآن. تقدّمك كله محفوظ" +
       (st.reentry ? "، وخففنا لك تحديات الأيام القادمة لتعود بهدوء." : "."));
     return true;
@@ -784,13 +828,15 @@
         ringHTML(fmt(t.minutes * 60)) +
         '<p class="focus-line">' + line + "</p>" +
         '<p class="small muted">أبعِد الهاتف قليلاً — سننبّهك عند الانتهاء.</p>' +
-        '<button class="linkbtn" data-action="stopTimer">إنهاء مبكر</button></section>';
+        '<div class="row" style="justify-content:center;gap:12px"><button class="icon-btn session-mute" data-action="sessionMute" aria-pressed="' + !!t.muted + '" aria-label="صوت الجلسة" title="صوت الجلسة">' + (t.muted ? "🔕" : "🔔") + "</button>" +
+        '<button class="linkbtn" style="margin:0" data-action="stopTimer">إنهاء مبكر</button></div></section>';
     }
     return '<section class="card center"><h2>⏱️ جلسة تركيز</h2>' +
       '<p class="muted small">اختر المادة والمدة. كل دقيقة = 2 ⭐</p>' +
       ringHTML(fmt(focusChoice.minutes * 60)) +
       '<div class="stack"><div class="field-label">المدة</div><div class="chips">' + [5, 10, 15, 25, 40].map(m => '<button class="chip' + (m === focusChoice.minutes ? " sel" : "") + '" data-action="setMin" data-m="' + m + '" aria-pressed="' + (m === focusChoice.minutes) + '">' + m + " د</button>").join("") + "</div>" +
       '<div class="field-label">المادة</div><div class="chips">' + subs.map(x => '<button class="chip' + (x === focusChoice.subject ? " sel" : "") + '" data-action="setSub" data-s="' + esc(x) + '" aria-pressed="' + (x === focusChoice.subject) + '">' + esc(x) + "</button>").join("") + "</div>" +
+      (S.settings.sound ? '<button class="chip" data-action="toggleAmbient" role="switch" aria-checked="' + S.settings.ambient + '">' + (S.settings.ambient ? "🌧️ خلفية هادئة: تعمل" : "🌧️ خلفية هادئة") + "</button>" : "") +
       '<button class="btn big good block" data-action="startTimer">▶ ابدأ</button></div></section>' +
       '<details class="card tips"><summary><b>💡 نصائح للتركيز</b></summary><ul class="list-plain small">' +
       "<li>ابدأ بـ 5 أو 10 دقائق إذا كنت بعيداً عن الدراسة — هذا طبيعي جداً.</li>" +
@@ -808,8 +854,11 @@
         () => startTimer(minutes, subject, true, chId));
       return;
     }
-    S.timer = { end: Date.now() + minutes * 60000, minutes, subject, chId: chId || null };
+    S.timer = { end: Date.now() + minutes * 60000, minutes, subject, chId: chId || null, muted: false };
     save();
+    fx("focusStart");
+    if (window.Sound) Sound.startAmbient();
+    scheduleFocusNotif(S.timer.end);
     view = "focus";
     render();
     ensureTimerLoop();
@@ -844,7 +893,9 @@
     S.totalFocus += t.minutes;
     S.sessions++;
     save();
-    beep();
+    if (window.Sound) Sound.stopAmbient();
+    // نعزف نغمة النهاية فقط إذا انتهت الجلسة للتو (لا بعد ساعات)، وما لم يكتمها الطالب
+    if (!t.muted && Date.now() - t.end < 600000) fx("focusEnd");
     let earned = t.minutes * 2;
     addXP(earned);
     // الجلسة بدأت من تحدٍّ؟ نُنجزه تلقائياً
@@ -894,8 +945,12 @@
   function mathQuestion() {
     // الصعوبة تتبع مستواك ورقمك القياسي
     const L = Math.max(levelInfo(S.xp).level, 1 + Math.floor((S.best.math || 0) / 4));
-    const max = 10 + L * 5;
-    const ops = L < 3 ? ["+", "-"] : L < 5 ? ["+", "-", "×"] : ["+", "-", "×", "÷"];
+    let max = 10 + L * 5;
+    let ops = L < 3 ? ["+", "-"] : L < 5 ? ["+", "-", "×"] : ["+", "-", "×", "÷"];
+    // الصفوف الصغيرة: أرقام وعمليات تناسب العمر
+    const cls = studentClass();
+    if (cls <= 2) { ops = ["+", "-"]; max = Math.min(max, 20); }
+    else if (cls <= 4) { ops = ops.filter(o => o !== "÷"); max = Math.min(max, 50); }
     const op = ops[Math.floor(Math.random() * ops.length)];
     let a, b, ans;
     const R = n => 1 + Math.floor(Math.random() * n);
@@ -932,7 +987,7 @@
       if (left <= 0) {
         clearInterval(mathInt);
         game.over = true;
-        if (game.score > (S.best.math || 0)) { S.best.math = game.score; toast("رقم قياسي جديد! 🏆"); }
+        if (game.score > (S.best.math || 0)) { S.best.math = game.score; toast("رقم قياسي جديد! 🏆"); fx("record"); } else fx("gameEnd");
         save();
         gameXP(game.score * 2);
         if (view === "games") render();
@@ -971,9 +1026,10 @@
     g.first = null;
     if (f.e === c.e) {
       f.matched = c.matched = true;
+      if (!g.cards.every(x => x.matched)) fx("right");
       if (g.cards.every(x => x.matched)) {
         g.over = true;
-        if (!S.best.memory || g.tries < S.best.memory) { S.best.memory = g.tries; toast("رقم قياسي جديد! 🏆"); }
+        if (!S.best.memory || g.tries < S.best.memory) { S.best.memory = g.tries; toast("رقم قياسي جديد! 🏆"); fx("record"); } else fx("gameEnd");
         save();
         gameXP(Math.max(10, 40 - g.tries));
       }
@@ -1030,6 +1086,8 @@
     const p = S.profile;
     return '<div class="card"><h2>⚙️ الإعدادات</h2>' +
       '<label for="obName">الاسم</label><input type="text" id="obName" maxlength="30" value="' + esc(p.name) + '">' +
+      '<label for="obClass">الصف</label><select id="obClass">' + (p.cls ? "" : '<option value="">— اختر صفّك —</option>') +
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(c => '<option value="' + c + '"' + (p.cls === c ? " selected" : "") + ">" + classLabel(c) + (c <= 12 ? " (" + gradeOfClass(c).split(" /")[0] + ")" : "") + "</option>").join("") + "</select>" +
       "<label>المواد</label><div class=\"chips\">" +
       SUBJECTS.map(s => '<button type="button" class="chip' + (onboardSel.includes(s) ? " sel" : "") + '" data-action="obSubject" data-s="' + esc(s) + '">' + esc(s) + "</button>").join("") + "</div>" +
       '<label for="obMinutes">الوقت اليومي (دقيقة)</label><select id="obMinutes">' +
@@ -1043,6 +1101,7 @@
       [["auto", "🌓 تلقائي"], ["light", "☀️ فاتح"], ["dark", "🌙 داكن"]].map(t =>
         '<button role="radio" aria-checked="' + (Theme.get() === t[0]) + '" class="' + (Theme.get() === t[0] ? "sel" : "") + '" data-action="setTheme" data-t="' + t[0] + '">' + t[1] + "</button>").join("") +
       "</div></div>" +
+      soundCard() +
       '<div class="card"><h3>💾 نسخة احتياطية</h3><p class="small muted">بياناتك محفوظة على جهازك فقط. انسخها احتياطياً لتنقلها لجهاز آخر.</p>' +
       '<div class="grid-2"><button class="btn ghost" data-action="export">⬆️ تصدير</button>' +
       '<button class="btn ghost" data-action="import">⬇️ استيراد</button></div>' +
@@ -1052,6 +1111,20 @@
       '<details class="card danger-zone"><summary><b>⚠️ المنطقة الخطرة</b></summary><p class="small muted">مسح كل تقدّمك نهائياً. صدّر نسخة احتياطية أولاً.</p>' +
       '<button class="btn outline-danger block" data-action="reset">مسح كل البيانات</button></details>' +
       '<button class="btn ghost block" data-action="go" data-v="home">→ رجوع للرئيسية</button>';
+  }
+
+  /* ---------- الصوت والاهتزاز ---------- */
+  function soundCard() {
+    const st = S.settings;
+    const sw = (k, label, hint) => '<button type="button" class="switch-row" data-action="setPref" data-k="' + k + '" role="switch" aria-checked="' + !!st[k] + '">' +
+      '<span class="grow"><b>' + label + "</b>" + (hint ? '<span class="small muted">' + hint + "</span>" : "") + '</span><span class="switch" aria-hidden="true"></span></button>';
+    return '<div class="card"><h3>🔊 الصوت والاهتزاز</h3>' +
+      sw("sound", "أصوات التشجيع", "نغمات قصيرة وهادئة عند الإنجاز") +
+      (st.sound ? '<label for="volRange" class="vol-label">مستوى الصوت <span class="muted" id="volVal">' + Math.round(st.volume * 100) + "٪</span></label>" +
+        '<input type="range" id="volRange" min="0" max="100" step="10" value="' + Math.round(st.volume * 100) + '">' : "") +
+      sw("haptics", "الاهتزاز", "لمسات خفيفة مع الإنجاز") +
+      sw("quiet", "الساعات الهادئة", "من 10 مساءً حتى 7 صباحاً: صوت أخفض واهتزاز أقصر") +
+      "</div>";
   }
 
   /* ---------- مهمة «أنا تايه» ---------- */
@@ -1157,7 +1230,7 @@
       "التقييم: " + (fbDraft.rating ? "★".repeat(fbDraft.rating) + "☆".repeat(5 - fbDraft.rating) + " (" + fbDraft.rating + "/5)" : "بدون") + "\n" +
       "النوع: " + fbDraft.kind + "\n\n" + text + "\n\n" +
       "— معلومات (بدون بيانات شخصية):\n" +
-      "المرحلة الدراسية: " + S.profile.grade + "\nالمستوى في التطبيق: " + lv.level + "\nأيام الاستخدام: " + st.activeDays + "\nالمرحلة: " + st.stageObj.name;
+      "المرحلة الدراسية: " + S.profile.grade + (S.profile.cls ? " — " + classLabel(S.profile.cls) : "") + "\nالمستوى في التطبيق: " + lv.level + "\nأيام الاستخدام: " + st.activeDays + "\nالمرحلة: " + st.stageObj.name;
     fbDraft = { rating: 0, kind: "اقتراح" };
     if (firstThisWeek) addXP(10, "شكراً على رأيك"); else { markActive(); save(); }
     render();
@@ -1305,8 +1378,10 @@
   /* ---------- تحدي المعلومات ---------- */
   function startQuiz() {
     const subs = S.profile.subjects;
-    const primary = S.profile.grade === "ابتدائي";
-    const bank = QUIZ.filter(q => !(primary && (q.lvl === 2 || q.s === "الفيزياء" || q.s === "الكيمياء")));
+    // أسئلة تناسب الصف: لا أسئلة متقدمة للابتدائي، ولا فيزياء/كيمياء/حاسوب للصفوف 1-3
+    const cls = studentClass();
+    const bank = QUIZ.filter(q => !(cls <= 6 && (q.lvl === 2 || q.s === "الفيزياء" || q.s === "الكيمياء")) &&
+      !(cls <= 3 && (q.s === "الأحياء" || q.s === "الحاسوب" || q.s === "اللغة الإنجليزية")));
     const mine = shuffle(bank.filter(q => subs.includes(q.s)));
     const others = shuffle(bank.filter(q => !subs.includes(q.s)));
     const qs = mine.concat(others).slice(0, 10).map(q => Object.assign({}, q, { order: shuffle([0, 1, 2, 3]) }));
@@ -1457,6 +1532,7 @@
         if (!onboardSel.length) { toast("اختر مادة واحدة على الأقل"); return; }
         S.profile.subjects = onboardSel.slice();
         S.profile.name = name;
+        { const c = +($("#obClass") || {}).value; if (c) { S.profile.cls = c; S.profile.grade = gradeOfClass(c); } }
         S.profile.minutes = +$("#obMinutes").value;
         S.profile.goal = $("#obGoal").value.trim();
         { const w = document.querySelector('[data-action="obWhen"].sel'); S.profile.when = w ? w.dataset.w : ""; }
@@ -1525,7 +1601,9 @@
           "إنهاء", () => {
             if (!S.timer) return;
             const m = Math.floor((S.timer.minutes * 60000 - (S.timer.end - Date.now())) / 60000);
-            if (m >= 3) { S.timer.minutes = m; finishTimer(); }
+            cancelFocusNotif();
+            if (window.Sound) Sound.stopAmbient();
+            if (m >= 3) { S.timer.minutes = m; S.timer.end = Date.now(); S.timer.muted = true; finishTimer(); }
             else { clearInterval(timerInt); S.timer = null; save(); document.title = "رحلة العودة"; render(); }
           });
         break;
@@ -1533,7 +1611,8 @@
       case "startMath": view = "games"; startMath(); break;
       case "mathAns": {
         if (!game || game.over) return;
-        if (+el.dataset.v === game.q.ans) game.score++; else { game.wrong++; if (navigator.vibrate) navigator.vibrate(60); }
+        if (+el.dataset.v === game.q.ans) { game.score++; game.combo = (game.combo || 0) + 1; fx("tick", { combo: game.combo - 1 }); }
+        else { game.wrong++; game.combo = 0; Haptics.buzz(25); }
         game.q = mathQuestion();
         render();
         break;
@@ -1546,7 +1625,7 @@
         if (!game || game.type !== "quiz" || game.picked !== null) return;
         game.picked = +el.dataset.i;
         const ok = game.picked === game.qs[game.i].a;
-        if (ok) game.score++; else if (navigator.vibrate) navigator.vibrate(60);
+        if (ok) { game.score++; fx("right"); } else fx("softNo");
         render();
         break;
       }
@@ -1555,7 +1634,9 @@
         game.i++; game.picked = null;
         if (game.i >= game.qs.length) {
           game.over = true;
+          const rec0 = S.best.quiz;
           if (S.best.quiz == null || game.score > S.best.quiz) S.best.quiz = game.score;
+          fx(rec0 != null && game.score > rec0 ? "record" : "gameEnd");
           save();
           gameXP(game.score * 3);
           if (game.score === 10) confetti();
@@ -1582,16 +1663,37 @@
         break;
       case "cardFilter": cardsFilter = el.dataset.s; render(); break;
       case "startReview": review = { queue: shuffle(dueCards().map(c => c.id)), show: false, done: 0, right: 0, retried: [] }; render(); break;
-      case "showAnswer": if (review) { review.show = true; render(); } break;
-      case "grade": gradeCard(el.dataset.ok === "1"); break;
+      case "showAnswer": if (review) { review.show = true; fx("flip"); render(); } break;
+      case "grade": if (el.dataset.ok === "1") fx("right"); gradeCard(el.dataset.ok === "1"); break;
       case "endReview": review = null; render(); break;
       case "share": shareProgress(); break;
+      case "setPref": {
+        const k = el.dataset.k;
+        S.settings[k] = !S.settings[k];
+        save();
+        if (k === "sound" && S.settings.sound) setTimeout(() => fx("right"), 30);
+        if (k === "haptics" && S.settings.haptics) Haptics.buzz(15);
+        if (k === "sound" && !S.settings.sound && window.Sound) Sound.stopAmbient();
+        render();
+        break;
+      }
+      case "obSound": S.settings.sound = !S.settings.sound; save(); renderOnboarding(); if (S.settings.sound) fx("right"); break;
+      case "toggleAmbient": S.settings.ambient = !S.settings.ambient; save(); render(); break;
+      case "sessionMute": {
+        if (!S.timer) return;
+        S.timer.muted = !S.timer.muted;
+        save();
+        if (window.Sound) { if (S.timer.muted) Sound.stopAmbient(); else Sound.startAmbient(); }
+        render();
+        break;
+      }
       case "obNext": obNext(); break;
       case "obBack": { const nm = $("#obName"); if (nm) ob.name = nm.value.trim(); ob.step = Math.max(0, ob.step - 1); renderOnboarding(); break; }
       case "obSet": {
         const k = el.dataset.k, v = el.dataset.v;
         if (k === "lvl") { const steps = obSteps(); ob.levels[onboardSel[+steps[ob.step].split(":")[1]]] = +v; }
-        else if (k === "minutes" || k === "away") ob[k] = +v;
+        else if (k === "minutes" || k === "away" || k === "cls") ob[k] = +v;
+        else if (k === "grade") { if (ob.grade !== v) ob.cls = 0; ob.grade = v; const cl = GRADE_INFO[v].classes; if (cl.length === 1) ob.cls = cl[0]; }
         else ob[k] = (ob[k] === v && k === "when") ? "" : v;
         renderOnboarding();
         if (el.dataset.auto) setTimeout(obNext, reducedMotion() ? 0 : 220);
@@ -1677,7 +1779,11 @@
     }
   });
 
+  document.addEventListener("input", e => {
+    if (e.target && e.target.id === "volRange") { const v = $("#volVal"); if (v) v.textContent = e.target.value + "٪"; }
+  });
   document.addEventListener("change", e => {
+    if (e.target && e.target.id === "volRange") { S.settings.volume = (+e.target.value || 0) / 100; save(); fx("right"); return; }
     if (e.target.id !== "importFile" || !e.target.files[0]) return;
     const reader = new FileReader();
     reader.onload = () => {
@@ -1700,6 +1806,7 @@
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
     if (S.timer && S.timer.end <= Date.now()) finishTimer();
+    else if (S.timer && !S.timer.muted && window.Sound) Sound.startAmbient();
     else if (S.profile && S.daily && S.daily.date !== today()) render();
   });
 
@@ -1724,6 +1831,8 @@
   });
   document.addEventListener("themechange", syncThemeUI);
   syncThemeUI();
+
+  if (window.Sound) Sound.init(() => S.settings);
 
   /* ================= التشغيل ================= */
   render();
