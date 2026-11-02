@@ -508,3 +508,28 @@ details.how summary { color: var(--primary-text); font-weight: 700; font-size: v
 .vol-label { display: flex; justify-content: space-between; margin: 10px 0 4px; }
 input[type=range] { width: 100%; accent-color: var(--primary); min-height: 36px; }
 .session-mute { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+
+/* مذاكرة: كتبي + المعلم الذكي */
+.study-tabs { margin-bottom: 14px; }
+.book-list li { padding: 0; }
+.book-row { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; cursor: pointer; padding: 12px 0; text-align: start; min-height: 60px; color: var(--text); }
+.book-row .grow { display: flex; flex-direction: column; }
+.book-ic { font-size: 1.8rem; width: 44px; height: 44px; display: grid; place-items: center; background: var(--bg); border-radius: var(--r-md); flex: none; }
+.book-ic.big { width: 56px; height: 56px; font-size: 2.2rem; }
+.back-link { margin: 0 0 8px; padding: 0; min-height: 36px; display: inline-block; }
+.tutor-actions { margin: 12px 0; }
+.chat-log { max-height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px; margin: 8px 0 12px; background: var(--bg); border-radius: var(--r-md); }
+.bubble { padding: 10px 14px; border-radius: 16px; max-width: 92%; line-height: 1.8; font-size: var(--fs-sm); word-wrap: break-word; }
+.bubble p { margin: 0 0 6px; } .bubble p:last-child { margin: 0; }
+.bubble ul, .bubble ol { margin: 4px 0; padding-inline-start: 20px; }
+.bubble.me { align-self: flex-start; background: var(--primary); color: #fff; border-end-start-radius: 4px; }
+.bubble.ai { align-self: flex-end; background: var(--card); border: 1px solid var(--line); border-end-end-radius: 4px; }
+.bubble.typing { color: var(--muted); }
+.dots-anim i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin: 0 1px; animation: blink 1.2s infinite; }
+.dots-anim i:nth-child(2) { animation-delay: .2s; } .dots-anim i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+.chat-input { display: flex; gap: 8px; align-items: flex-end; }
+.chat-input textarea { min-height: 48px; max-height: 140px; resize: none; }
+.chat-input .btn { width: 52px; flex: none; font-size: 1.2rem; transform: scaleX(-1); }
+.care-note { color: var(--text); background: var(--bg); padding: 8px 12px; border-radius: var(--r-sm); }
+.grid-2 > .btn, .grid-3 > .btn { padding-inline: 8px; white-space: nowrap; }

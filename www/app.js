@@ -24,7 +24,10 @@
     reviews: 0,
     weeklyClaimed: {},
     timer: null,            // {end, minutes, subject}
-    settings: { sound: true, volume: 0.6, haptics: true, quiet: true, ambient: false }
+    settings: { sound: true, volume: 0.6, haptics: true, quiet: true, ambient: false },
+    books: [],              // كتبي: [{id, title, subject, kind:"file"|"link", mime, size, url, fileId, added}]
+    bookChats: {},          // محادثات المعلم الذكي لكل كتاب: {id: [{role, text}]}
+    deviceId: ""
   };
 
   function load() {
@@ -75,6 +78,17 @@
       haptics: set0.haptics !== false, quiet: set0.quiet !== false, ambient: set0.ambient === true
     };
     if (st.profile && st.profile.cls != null) st.profile.cls = Math.min(13, Math.max(1, Math.round(num(st.profile.cls)) || 0)) || undefined;
+    st.books = arr(st.books).filter(b => b && typeof b === "object").map(b => ({
+      id: safeId(b.id), title: str(b.title).slice(0, 80) || "كتاب", subject: str(b.subject).slice(0, 40),
+      kind: b.kind === "link" ? "link" : "file", mime: str(b.mime).slice(0, 40), size: Math.max(0, num(b.size)),
+      url: /^https:\/\//i.test(str(b.url)) ? str(b.url).slice(0, 2000) : "",
+      fileId: /^file_[A-Za-z0-9]+$/.test(str(b.fileId)) ? str(b.fileId) : "", added: dateOk(b.added) ? b.added : dateKey()
+    }));
+    if (!st.bookChats || typeof st.bookChats !== "object") st.bookChats = {};
+    Object.keys(st.bookChats).forEach(k => {
+      st.bookChats[k] = arr(st.bookChats[k]).filter(m => m && (m.role === "user" || m.role === "assistant")).map(m => ({ role: m.role, text: str(m.text).slice(0, 6000) })).slice(-30);
+    });
+    st.deviceId = /^[A-Za-z0-9]{8,40}$/.test(str(st.deviceId)) ? st.deviceId : "";
     st.daily = null; // يُعاد توليد تحديات اليوم
     if (st.timer && !(st.timer.end > 0 && st.timer.minutes > 0)) st.timer = null;
     return st;
@@ -533,21 +547,24 @@
     document.body.classList.remove("bare");
     ensureDaily();
     updateTopbar();
-    const navView = view === "games" ? "challenges" : view;
+    const navView = view === "games" ? "challenges" : view === "books" ? "cards" : view;
     document.querySelectorAll("#nav button").forEach(b => {
       const on = b.dataset.view === navView;
       b.classList.toggle("active", on);
       if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
     $("#nav").style.display = "";
-    const views = { home: viewHome, challenges: viewChallenges, focus: viewFocus, games: viewGames, journey: viewJourney, settings: viewSettings, cards: viewCards };
+    const views = { home: viewHome, challenges: viewChallenges, focus: viewFocus, games: viewGames, journey: viewJourney, settings: viewSettings, cards: viewCards, books: viewBooks };
     // وضع التركيز الكامل: نخفي كل ما يشتّت أثناء الجلسة
     const running = view === "focus" && !!S.timer && S.timer.end > Date.now();
     document.body.classList.toggle("focus-run", running);
     const key = view + (running ? ":run" : "");
     const sameView = key === lastView, y = window.scrollY;
-    app.innerHTML = (views[view] || viewHome)();
+    let html = (views[view] || viewHome)();
+    if ((view === "cards" && !review) || (view === "books" && !openBookId)) html = studyTabs() + html;
+    app.innerHTML = html;
     if (view === "focus") tickTimer();
+    if (view === "books" && openBookId) { const log = $("#chatLog"); if (log) log.scrollTop = log.scrollHeight; }
     afterRender(sameView, y);
     lastView = key;
     justDone = null;
@@ -791,6 +808,7 @@
       '<button class="check' + (c.id === justDone ? " pop" : "") + '" data-action="toggle" data-id="' + esc(c.id) + '" aria-pressed="' + c.done + '" aria-label="' + (c.done ? "إلغاء الإنجاز: " : "إنجاز: ") + esc(c.text) + '">' + (c.done ? "✔" : "") + "</button>" +
       '<div class="grow"><div class="ch-text">' + esc(c.text) + "</div>" + metaHTML(c) +
       (!c.done && c.type === "recall" ? '<button class="btn ghost sm" data-action="go" data-v="cards">🗂️ افتح البطاقات</button>' : "") +
+      (!c.done && (c.type === "study" || c.type === "recall") && S.books.some(b => b.subject === c.subject) ? '<button class="btn ghost sm" data-action="tutorFor" data-s="' + esc(c.subject) + '">🤖 اسأل المعلم</button>' : "") +
       (!c.done && (c.type === "study" || c.type === "bonus") ? '<button class="btn ghost sm" data-action="focusFor" data-id="' + esc(c.id) + '" data-m="' + c.minutes + '" data-s="' + esc(c.subject) + '">▶ ابدأ بمؤقت</button>' : "") +
       "</div></div>";
     const todo = list.filter(c => !c.done), done = list.filter(c => c.done);
@@ -1375,6 +1393,297 @@
     render();
   }
 
+  /* ---------- كتبي + المعلم الذكي ---------- */
+  const aiBase = () => (typeof AI_CONFIG !== "undefined" && AI_CONFIG && AI_CONFIG.proxyUrl ? String(AI_CONFIG.proxyUrl).replace(/\/+$/, "") : "");
+  const MAX_AI_FILE = 20 * 1024 * 1024;
+  let studyTab = "books", openBookId = null, bookForm = false;
+  let aiBusy = false, aiStatus = "", tutorLesson = "", tutorDeep = false;
+
+  // الملفات نفسها في IndexedDB (localStorage صغير جداً للكتب)
+  function idb() {
+    return new Promise((res, rej) => {
+      if (!window.indexedDB) { rej(new Error("no-idb")); return; }
+      const r = indexedDB.open("rehla-books", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("files");
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  async function idbDo(mode, fn) {
+    const db = await idb();
+    return new Promise((res, rej) => {
+      const t = db.transaction("files", mode), st = t.objectStore("files");
+      const r = fn(st);
+      t.oncomplete = () => res(r && r.result);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error);
+    });
+  }
+  const idbPut = (k, v) => idbDo("readwrite", st => st.put(v, k));
+  const idbGet = k => idbDo("readonly", st => st.get(k));
+  const idbDel = k => idbDo("readwrite", st => st.delete(k));
+
+  function deviceId() {
+    if (!S.deviceId) { S.deviceId = (Date.now().toString(36) + Math.random().toString(36).slice(2, 12)).replace(/[^A-Za-z0-9]/g, ""); save(); }
+    return S.deviceId;
+  }
+  const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+  const bookIcon = b => b.kind === "link" ? "🔗" : (b.mime || "").startsWith("image/") ? "🖼️" : "📕";
+  const studyTabs = () => '<div class="seg study-tabs" role="tablist" aria-label="مذاكرة">' +
+    [["books", "📖 كتبي"], ["cards", "🗂️ بطاقاتي"]].map(t => '<button role="tab" aria-selected="' + (view === t[0]) + '" class="' + (view === t[0] ? "sel" : "") + '" data-action="studyTab" data-t="' + t[0] + '">' + t[1] + "</button>").join("") + "</div>";
+
+  // ردود المعلم: نص آمن مع عريض وقوائم بسيطة
+  function mdLite(t) {
+    const lines = esc(t).split(/\n/);
+    let html = "", list = null;
+    const close = () => { if (list) { html += "</" + list + ">"; list = null; } };
+    lines.forEach(raw => {
+      const l = raw.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+      let m;
+      if ((m = l.match(/^\s*[-•*]\s+(.*)$/))) { if (list !== "ul") { close(); html += "<ul>"; list = "ul"; } html += "<li>" + m[1] + "</li>"; }
+      else if ((m = l.match(/^\s*\d+[.)-]\s+(.*)$/))) { if (list !== "ol") { close(); html += "<ol>"; list = "ol"; } html += "<li>" + m[1] + "</li>"; }
+      else if (!l.trim()) close();
+      else { close(); html += "<p>" + l.replace(/^#+\s*/, "") + "</p>"; }
+    });
+    close();
+    return html;
+  }
+
+  function viewBooks() {
+    const b = openBookId && S.books.find(x => x.id === openBookId);
+    if (b) return viewBook(b);
+    openBookId = null;
+    const subs = S.profile.subjects.length ? S.profile.subjects : ["عام"];
+    const addRow = '<div class="grid-2"><button class="btn" data-action="addBookFile">📄 ملف أو صورة</button>' +
+      '<button class="btn ghost" data-action="addBookLink">🔗 رابط</button></div>' +
+      '<input type="file" id="bookFile" accept="application/pdf,image/*" hidden>' +
+      '<p class="small muted center" style="margin:8px 0 0">PDF للكتاب أو لفصل منه، أو صوّر صفحات الدرس بالكاميرا 📷</p>';
+    const linkForm = bookForm ? '<section class="card" id="linkForm"><h3>🔗 رابط كتاب</h3>' +
+      '<label for="bkUrl">الرابط (PDF مباشر يبدأ بـ https)</label><input type="url" id="bkUrl" dir="ltr" placeholder="https://…/book.pdf">' +
+      '<label for="bkTitle">اسم الكتاب</label><input type="text" id="bkTitle" maxlength="80" placeholder="مثلاً: رياضيات الصف السابع ج1">' +
+      '<label for="bkSub">المادة</label><select id="bkSub">' + subs.map(x => "<option>" + esc(x) + "</option>").join("") + "</select>" +
+      '<div class="stack"><button class="btn block" data-action="saveBookLink">أضف الكتاب</button><button class="linkbtn" data-action="cancelBookLink">إلغاء</button></div></section>' : "";
+    if (!S.books.length) {
+      return '<section class="card center"><div class="empty-emoji" aria-hidden="true">📖</div><h2>كتبي</h2>' +
+        '<p class="muted">أضف كتابك أو صوّر صفحات الدرس، و<b>المعلم الذكي</b> يشرحه لك خطوة بخطوة، ويلخّصه، ويختبرك فيه، ويصنع لك بطاقات مراجعة.</p>' +
+        addRow + "</section>" + linkForm + aiInfoCard();
+    }
+    return '<section class="card"><h2>📖 كتبي</h2>' + addRow + "</section>" + linkForm +
+      '<section class="card"><ul class="list-plain book-list">' + S.books.slice().reverse().map(x =>
+        '<li><button class="book-row" data-action="openBook" data-id="' + esc(x.id) + '"><span class="book-ic" aria-hidden="true">' + bookIcon(x) + "</span>" +
+        '<span class="grow"><b dir="auto">' + esc(x.title) + '</b><span class="meta">' + esc(x.subject) + (x.size ? " · " + fmtSize(x.size) : "") +
+        ((S.bookChats[x.id] || []).length ? " · 💬 " + Math.ceil(S.bookChats[x.id].length / 2) : "") + "</span></span><span aria-hidden=\"true\">←</span></button></li>").join("") +
+      "</ul></section>" + aiInfoCard();
+  }
+  function aiInfoCard() {
+    return aiBase() ? "" : '<details class="card how"><summary>💜 كيف يعمل المعلم الذكي؟</summary><p class="small muted">' +
+      "افتح أي كتاب واضغط «افتح مع Claude»: نجهّز لك طلباً جاهزاً بصفّك ومادتك، وتُرفق الكتاب في Claude وتدرس معه مجاناً من حسابك." +
+      "</p></details>";
+  }
+
+  function viewBook(b) {
+    const chat = S.bookChats[b.id] || [];
+    const online = navigator.onLine !== false;
+    const ai = aiBase();
+    const big = b.kind === "file" && b.size > MAX_AI_FILE;
+    const head = '<section class="card"><button class="linkbtn back-link" data-action="closeBook">→ كل الكتب</button>' +
+      '<div class="row"><span class="book-ic big" aria-hidden="true">' + bookIcon(b) + '</span><div class="grow"><h2 dir="auto" style="margin:0">' + esc(b.title) + "</h2>" +
+      '<div class="meta">' + esc(b.subject) + (b.size ? " · " + fmtSize(b.size) : "") + (b.fileId ? " · جاهز للمعلم ✔" : "") + "</div></div></div>" +
+      '<div class="grid-2" style="margin-top:12px"><button class="btn ghost" data-action="openBookFile">📖 افتح الكتاب</button>' +
+      '<button class="btn outline" data-action="delBook">🗑️ حذف</button></div></section>';
+    let tutor = '<section class="card tutor"><h3>🤖 المعلم الذكي</h3>';
+    if (ai && !big) {
+      tutor +=
+        '<label for="tutorLesson">الدرس أو الصفحات <span class="muted">(اختياري)</span></label>' +
+        '<input type="text" id="tutorLesson" maxlength="80" placeholder="مثلاً: درس الكسور، أو صفحات 20–25" value="' + esc(tutorLesson) + '">' +
+        '<div class="grid-2 tutor-actions">' +
+        '<button class="btn ghost" data-action="aiMode" data-m="explain"' + (aiBusy ? " disabled" : "") + ">📖 اشرح لي</button>" +
+        '<button class="btn ghost" data-action="aiMode" data-m="summary"' + (aiBusy ? " disabled" : "") + ">📝 لخّص</button>" +
+        '<button class="btn ghost" data-action="aiMode" data-m="quiz"' + (aiBusy ? " disabled" : "") + ">❓ اختبرني</button>" +
+        '<button class="btn ghost" data-action="aiMode" data-m="cards"' + (aiBusy ? " disabled" : "") + ">🗂️ اصنع بطاقات</button></div>" +
+        (chat.length || aiBusy ? '<div class="chat-log" id="chatLog" aria-live="polite">' + chat.map(m =>
+          '<div class="bubble ' + (m.role === "user" ? "me" : "ai") + '" dir="auto">' + (m.role === "user" ? esc(m.text) : mdLite(m.text)) + "</div>").join("") +
+          (aiBusy ? '<div class="bubble ai typing">' + esc(aiStatus || "المعلم يكتب") + ' <span class="dots-anim" aria-hidden="true"><i></i><i></i><i></i></span></div>' : "") + "</div>" : "") +
+        '<div class="chat-input"><textarea id="aiInput" dir="auto" rows="1" maxlength="1500" placeholder="اسأل عن أي شيء في الكتاب…" aria-label="سؤالك للمعلم"></textarea>' +
+        '<button class="btn" data-action="aiSend" aria-label="إرسال"' + (aiBusy ? " disabled" : "") + ">➤</button></div>" +
+        '<button type="button" class="switch-row" data-action="aiDeep" role="switch" aria-checked="' + tutorDeep + '"><span class="grow"><b>🧠 شرح أعمق</b><span class="small muted">أبطأ قليلاً — للدروس الصعبة</span></span><span class="switch" aria-hidden="true"></span></button>' +
+        (chat.length ? '<button class="linkbtn" data-action="aiClear">🧹 محادثة جديدة</button>' : "") +
+        (!online ? '<p class="small care-note">📶 المعلم الذكي يحتاج إنترنت. الكتاب نفسه متاح لك دائماً.</p>' : "") +
+        '<p class="small muted">يُرسَل الكتاب للمعلم الذكي (Claude) لشرحه لك فقط.</p>';
+    } else if (big) {
+      tutor += '<p class="small muted">الملف أكبر من 20 ميغابايت. لتستخدم المعلم داخل التطبيق: ارفع فصلاً واحداً أو صوّر صفحات الدرس. أو استخدم Claude مباشرة:</p>';
+    } else {
+      tutor += '<p class="small muted">ادرس هذا الكتاب مع Claude مجاناً من حسابك: نجهّز لك الطلب، وأنت تُرفق الكتاب 📎 وترسل.</p>';
+    }
+    tutor += '<button class="btn ' + (ai && !big ? "outline" : "") + ' block" data-action="openClaude">💜 افتح مع Claude (مجاني)</button></section>';
+    return head + tutor;
+  }
+
+  const aiTarget = () => tutorLesson.trim() ? "«" + tutorLesson.trim() + "»" : "أول درس في الكتاب";
+  function aiPrompt(mode) {
+    const t = aiTarget();
+    if (mode === "explain") return "اشرح لي " + t + " خطوة بخطوة بأسلوب بسيط، مع مثال من الحياة، ثم اسألني سؤالاً واحداً لأتأكد أني فهمت.";
+    if (mode === "summary") return "لخّص لي " + t + " في نقاط قصيرة: الأفكار الرئيسية، والمصطلحات المهمة، وما يجب أن أحفظه.";
+    if (mode === "quiz") return "اختبرني في " + t + ": اسألني سؤالاً واحداً فقط في كل مرة، وانتظر إجابتي، ثم صحّحها بلطف وانتقل للسؤال التالي. ابدأ بالسؤال الأول.";
+    return "اصنع 8 بطاقات مراجعة (سؤال قصير وجوابه من الكتاب) من " + t + ".";
+  }
+
+  async function aiFetch(path, payload) {
+    if (navigator.onLine === false) throw { code: "offline" };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 120000);
+    let res;
+    try {
+      res = await fetch(aiBase() + path, Object.assign({ method: "POST", signal: ctrl.signal }, payload instanceof FormData ?
+        { headers: { "X-Device-Id": deviceId() }, body: payload } :
+        { headers: { "Content-Type": "application/json", "X-Device-Id": deviceId() }, body: JSON.stringify(payload) }));
+    } catch (e) { throw { code: e && e.name === "AbortError" ? "timeout" : "network" }; }
+    finally { clearTimeout(timer); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw { code: data.error || "http", status: res.status, limit: data.limit };
+    return data;
+  }
+  function aiErrorText(e) {
+    const c = (e && e.code) || "";
+    return ({
+      offline: "📶 أنت غير متصل بالإنترنت الآن. جرّب لاحقاً — كتابك محفوظ عندك.",
+      network: "تعذّر الاتصال. تأكد من الإنترنت وحاول مرة أخرى.",
+      timeout: "الاتصال بطيء جداً. حاول مرة أخرى، أو اسأل عن جزء أصغر من الكتاب.",
+      daily_limit: "وصلت للحد اليومي للمعلم الذكي" + (e.limit ? " (" + e.limit + ")" : "") + ". نكمل غداً 💜",
+      busy: "المعلم مشغول الآن. حاول بعد دقيقة.",
+      too_large: "الملف كبير جداً للمعلم. ارفع فصلاً واحداً أو صوّر صفحات الدرس.",
+      missing: "لم نجد ملف الكتاب على جهازك. احذفه وأضفه من جديد.",
+      server_not_configured: "المعلم الذكي غير جاهز بعد. استخدم «افتح مع Claude» حالياً.",
+      origin_not_allowed: "المعلم الذكي غير جاهز بعد. استخدم «افتح مع Claude» حالياً."
+    })[c] || "حدث خطأ. حاول مرة أخرى.";
+  }
+  async function ensureUploaded(b, force) {
+    if (b.kind !== "file" || (b.fileId && !force)) return;
+    const blob = await idbGet(b.id).catch(() => null);
+    if (!blob) throw { code: "missing" };
+    if (blob.size > MAX_AI_FILE) throw { code: "too_large" };
+    aiStatus = "نرفع الكتاب للمعلم (مرة واحدة فقط)";
+    render();
+    const fd = new FormData();
+    const ext = (b.mime.split("/")[1] || "pdf").replace("jpeg", "jpg");
+    fd.append("file", blob, "book." + ext);
+    const r = await aiFetch("/upload", fd);
+    b.fileId = r.fileId;
+    save();
+    aiStatus = "";
+  }
+  function bookPayload(b, extra) {
+    return Object.assign({
+      fileId: b.kind === "file" ? b.fileId : undefined, url: b.kind === "link" ? b.url : undefined, mime: b.mime,
+      title: b.title, subject: b.subject, grade: classLabel(studentClass()) || S.profile.grade
+    }, extra);
+  }
+  async function aiCall(b, path, extra) {
+    await ensureUploaded(b);
+    try { return await aiFetch(path, bookPayload(b, extra)); }
+    catch (e) {
+      // ملف منتهٍ (بعد 90 يوماً) أو مفقود من الخادم: نرفعه مرة أخرى ونعيد المحاولة مرة واحدة
+      if (e && e.code === "bad_request" && b.kind === "file") { await ensureUploaded(b, true); return aiFetch(path, bookPayload(b, extra)); }
+      throw e;
+    }
+  }
+  function aiReward() {
+    const rec = dayRec();
+    rec.aiQ = (rec.aiQ || 0) + 1;
+    if (rec.aiQ <= 10) addXP(3); else { markActive(); save(); }
+  }
+  async function aiSend(b, text) {
+    if (aiBusy || !text.trim()) return;
+    const chat = S.bookChats[b.id] = S.bookChats[b.id] || [];
+    chat.push({ role: "user", text: text.trim() });
+    aiBusy = true; aiStatus = "";
+    save(); render();
+    try {
+      let hist = chat.slice(-11);
+      while (hist.length && hist[0].role !== "user") hist = hist.slice(1);
+      const r = await aiCall(b, "/chat", { deep: tutorDeep, messages: hist });
+      chat.push({ role: "assistant", text: r.text || "…" });
+      if (chat.length > 30) S.bookChats[b.id] = chat.slice(-30);
+      fx("flip");
+      aiReward();
+    } catch (e) {
+      chat.pop();
+      toast(aiErrorText(e));
+      setTimeout(() => { const f = $("#aiInput"); if (f && !f.value) f.value = text; }, 50);
+    } finally {
+      aiBusy = false; aiStatus = "";
+      save(); render();
+    }
+  }
+  async function aiCards(b) {
+    if (aiBusy) return;
+    const prompt = aiPrompt("cards");
+    aiBusy = true; aiStatus = "المعلم يصنع بطاقاتك"; render();
+    try {
+      const r = await aiCall(b, "/cards", { messages: [{ role: "user", text: prompt }] });
+      const cards = (r.cards || []).filter(c => c.q && c.a);
+      cards.forEach(c => S.cards.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), subject: b.subject || (S.profile.subjects[0] || "عام"), q: c.q, a: c.a, box: 1, due: today() }));
+      const chat = S.bookChats[b.id] = S.bookChats[b.id] || [];
+      chat.push({ role: "user", text: prompt }, { role: "assistant", text: cards.length ? "✔ أضفت **" + cards.length + " بطاقة** إلى «بطاقاتي». راجعها الآن لتثبت المعلومة 🗂️" : "لم أستطع صنع بطاقات من هذا الجزء. جرّب تحديد الدرس أو الصفحات." });
+      if (cards.length) { fx("complete"); aiReward(); checkBadges(); }
+    } catch (e) { toast(aiErrorText(e)); }
+    finally { aiBusy = false; aiStatus = ""; save(); render(); }
+  }
+
+  async function addBookFromFile(file) {
+    if (!file) return;
+    const isImg = /^image\//.test(file.type), isPdf = file.type === "application/pdf";
+    if (!isImg && !isPdf) { toast("ارفع ملف PDF أو صورة"); return; }
+    let blob = file, mime = file.type;
+    if (isImg) { try { blob = await compressImage(file); mime = "image/jpeg"; } catch (e) { /* نستخدم الأصل */ } }
+    const id = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    try { await idbPut(id, blob); }
+    catch (e) { toast("لا توجد مساحة كافية على الجهاز لحفظ الكتاب"); return; }
+    const title = (file.name || "كتاب").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").slice(0, 80) || (isImg ? "صفحات الدرس" : "كتاب");
+    S.books.push({ id, title, subject: S.profile.subjects[0] || "عام", kind: "file", mime, size: blob.size, url: "", fileId: "", added: today() });
+    save();
+    openBookId = id; tutorLesson = "";
+    render();
+    toast(blob.size > MAX_AI_FILE ? "أُضيف الكتاب ✔ (كبير على المعلم — ارفع فصلاً واحداً)" : "أُضيف الكتاب ✔");
+    fx("complete");
+  }
+  // صور الصفحات: نصغّرها لتوفير الإنترنت والمساحة
+  function compressImage(file) {
+    return new Promise((res, rej) => {
+      const img = new Image(), url = URL.createObjectURL(file);
+      img.onload = () => {
+        const max = 1600, k = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(b => b ? res(b) : rej(new Error("blob")), "image/jpeg", 0.82);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("img")); };
+      img.src = url;
+    });
+  }
+  async function openBookFile(b) {
+    if (b.kind === "link") { window.open(b.url, "_blank", "noopener"); return; }
+    const blob = await idbGet(b.id).catch(() => null);
+    if (!blob) { toast(aiErrorText({ code: "missing" })); return; }
+    if (isNative()) { await nativeShareFile(b.title.replace(/[^\w؀-ۿ -]/g, "") + (b.mime === "application/pdf" ? ".pdf" : ".jpg"), await blobToBase64(blob), true, b.title); return; }
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  // بدون خادم: نجهّز طلباً جاهزاً ونفتح Claude ليُرفق الطالب كتابه ويدرس مجاناً من حسابه
+  function openClaude(b) {
+    const who = classLabel(studentClass());
+    const prompt = "أنا طالب" + (who ? " في " + who : "") + " وأدرس مادة " + (b.subject || "") + "، وابتعدت عن الدراسة فترة. " +
+      (b.kind === "link" ? "هذا رابط كتابي: " + b.url + " . " : "سأرفق لك كتابي «" + b.title + "». ") +
+      aiPrompt("explain") + " تحدّث معي بالعربية البسيطة، وكن صبوراً ومشجّعاً، ولا تعطني حلول الواجبات مباشرة بل ساعدني أفكّر.";
+    try { if (navigator.clipboard) navigator.clipboard.writeText(prompt).catch(() => {}); } catch (e) {}
+    window.open("https://claude.ai/new?q=" + encodeURIComponent(prompt), "_blank", "noopener");
+    toast(b.kind === "link" ? "فتحنا Claude ✔ أرسل الطلب الجاهز" : "فتحنا Claude ✔ أرفق الكتاب 📎 ثم أرسل");
+    markActive(); save();
+  }
+
   /* ---------- تحدي المعلومات ---------- */
   function startQuiz() {
     const subs = S.profile.subjects;
@@ -1490,7 +1799,7 @@
       if (game && game.type === "math" && !game.over) { clearInterval(mathInt); }
       game = null;
       review = null;
-      view = navBtn.dataset.view;
+      view = navBtn.dataset.view === "cards" ? studyTab : navBtn.dataset.view;
       render();
       return;
     }
@@ -1667,6 +1976,51 @@
       case "grade": if (el.dataset.ok === "1") fx("right"); gradeCard(el.dataset.ok === "1"); break;
       case "endReview": review = null; render(); break;
       case "share": shareProgress(); break;
+      case "studyTab": studyTab = el.dataset.t; openBookId = null; review = null; view = studyTab; render(); break;
+      case "addBookFile": { const f = $("#bookFile"); if (f) f.click(); break; }
+      case "addBookLink": bookForm = true; render(); setTimeout(() => { const u = $("#bkUrl"); if (u) u.focus(); }, 30); break;
+      case "cancelBookLink": bookForm = false; render(); break;
+      case "saveBookLink": {
+        const url = ($("#bkUrl").value || "").trim(), title = ($("#bkTitle").value || "").trim();
+        if (!/^https:\/\/\S+$/i.test(url)) { toast("اكتب رابطاً صحيحاً يبدأ بـ https://"); return; }
+        const id = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        S.books.push({ id, title: title || "كتاب من رابط", subject: $("#bkSub").value, kind: "link", mime: "application/pdf", size: 0, url, fileId: "", added: today() });
+        bookForm = false; openBookId = id; tutorLesson = "";
+        save(); render(); fx("complete");
+        break;
+      }
+      case "openBook": openBookId = el.dataset.id; tutorLesson = ""; render(); break;
+      case "closeBook": openBookId = null; render(); break;
+      case "tutorFor": {
+        const b = S.books.slice().reverse().find(x => x.subject === el.dataset.s);
+        if (b) { studyTab = "books"; view = "books"; openBookId = b.id; tutorLesson = ""; render(); }
+        break;
+      }
+      case "openBookFile": { const b = S.books.find(x => x.id === openBookId); if (b) openBookFile(b); break; }
+      case "delBook": {
+        const id = openBookId;
+        askConfirm("🗑️", "حذف هذا الكتاب؟", "سيُحذف من جهازك مع محادثاته. بطاقاتك تبقى.", "احذف", () => {
+          S.books = S.books.filter(x => x.id !== id); delete S.bookChats[id]; idbDel(id).catch(() => {});
+          openBookId = null; save(); render();
+        }, true);
+        break;
+      }
+      case "openClaude": { const b = S.books.find(x => x.id === openBookId); if (b) openClaude(b); break; }
+      case "aiMode": {
+        const b = S.books.find(x => x.id === openBookId);
+        if (!b) return;
+        const l = $("#tutorLesson"); if (l) tutorLesson = l.value;
+        if (el.dataset.m === "cards") aiCards(b); else aiSend(b, aiPrompt(el.dataset.m));
+        break;
+      }
+      case "aiSend": {
+        const b = S.books.find(x => x.id === openBookId), f = $("#aiInput");
+        const l = $("#tutorLesson"); if (l) tutorLesson = l.value;
+        if (b && f && f.value.trim()) aiSend(b, f.value);
+        break;
+      }
+      case "aiDeep": { const l = $("#tutorLesson"); if (l) tutorLesson = l.value; tutorDeep = !tutorDeep; render(); break; }
+      case "aiClear": { S.bookChats[openBookId] = []; save(); render(); break; }
       case "setPref": {
         const k = el.dataset.k;
         S.settings[k] = !S.settings[k];
@@ -1770,6 +2124,7 @@
 
   document.addEventListener("keydown", e => {
     if (e.key === "Enter" && e.target && e.target.id === "obName") { e.preventDefault(); obNext(); }
+    if (e.key === "Enter" && !e.shiftKey && e.target && e.target.id === "aiInput") { e.preventDefault(); const b = $('[data-action="aiSend"]'); if (b) b.click(); }
   });
   document.addEventListener("toggle", e => { if (e.target && e.target.id === "progressCard") progressOpen = e.target.open; }, true);
   document.addEventListener("input", e => {
@@ -1783,6 +2138,7 @@
     if (e.target && e.target.id === "volRange") { const v = $("#volVal"); if (v) v.textContent = e.target.value + "٪"; }
   });
   document.addEventListener("change", e => {
+    if (e.target && e.target.id === "bookFile") { const f = e.target.files && e.target.files[0]; e.target.value = ""; addBookFromFile(f); return; }
     if (e.target && e.target.id === "volRange") { S.settings.volume = (+e.target.value || 0) / 100; save(); fx("right"); return; }
     if (e.target.id !== "importFile" || !e.target.files[0]) return;
     const reader = new FileReader();
@@ -1833,6 +2189,8 @@
   syncThemeUI();
 
   if (window.Sound) Sound.init(() => S.settings);
+  window.addEventListener("online", () => { if (view === "books") render(); });
+  window.addEventListener("offline", () => { if (view === "books") render(); });
 
   /* ================= التشغيل ================= */
   render();
