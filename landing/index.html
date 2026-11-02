@@ -207,6 +207,15 @@
       .dl-grid { grid-template-columns: 1fr; }
       section { padding: 48px 0; }
     }
+    .sticky-cta { display: none; }
+    @media (max-width: 720px) {
+      .sticky-cta { display: block; position: fixed; inset-inline: 0; bottom: 0; z-index: 20; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+        background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--line);
+        transform: translateY(110%); transition: transform .3s ease; }
+      .sticky-cta.show { transform: none; }
+      .sticky-cta .btn { width: 100%; }
+      footer { padding-bottom: 90px; }
+    }
     .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s, transform .6s; }
     .reveal.in { opacity: 1; transform: none; }
     @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; } .float { animation: none; } html { scroll-behavior: auto; } }
@@ -216,7 +225,7 @@
 
 <nav class="nav">
   <div class="wrap">
-    <a class="logo" href="#"><img src="app/icon-192.png" alt="" width="32" height="32"> رحلة العودة</a>
+    <a class="logo" href="#"><img src="app/icon-192.png" alt="" width="32" height="32" decoding="async"> رحلة العودة</a>
     <div class="nav-links">
       <a href="#how">كيف يعمل</a>
       <a href="#features">الميزات</a>
@@ -238,7 +247,7 @@
       <p class="lead">«رحلة العودة» رفيقك اليومي: يبدأ معك بمهام صغيرة جداً لا تأخذ أكثر من دقائق، ويكبر معك كل يوم بتحديات ممتعة ونقاط وأوسمة، حتى تستعيد إيقاعك وتحقق هدفك.</p>
       <div class="cta">
         <a class="btn" href="app/">✨ ابدأ رحلتك الآن</a>
-        <a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/teacher/releases/latest/download/rehla-alawda.apk">📱 حمّل تطبيق Android</a>
+        <a class="btn ghost" href="https://github.com/abdulrahmanahmedelabed-prog/teacher/releases/latest/download/rehla-alawda.apk">📱 حمّل تطبيق Android <small style="opacity:.75">(≈4 MB)</small></a>
       </div>
       <div class="trust">
         <span>✔ بدون تسجيل حساب</span>
@@ -319,8 +328,8 @@
       <div class="feat"><div class="e">🧭</div><h3>«تايه؟ من وين أبدأ»</h3><p>زر واحد يأخذك في 5 خطوات صغيرة جداً لتبدأ فوراً، بدون تفكير.</p></div>
       <div class="feat"><div class="e">😊</div><h3>يفهم مزاجك</h3><p>يومك صعب؟ تخفّ التحديات. متحمس؟ يظهر لك تحدٍّ إضافي بمكافأة أكبر.</p></div>
       <div class="feat"><div class="e">⏱️</div><h3>مؤقت تركيز</h3><p>جلسات من 5 إلى 40 دقيقة، كل دقيقة = نقطتان، ويكمل حتى لو انقطعت الكهرباء.</p></div>
-      <div class="feat"><div class="e">🧠</div><h3>ألعاب تنشيط العقل</h3><p>سباق الأرقام ولعبة الذاكرة — 5 دقائق تجهّز دماغك قبل الدراسة.</p></div>
-      <div class="feat"><div class="e">🏅</div><h3>نقاط وأوسمة ومستويات</h3><p>10 ألقاب و18 وساماً وتحدٍّ أسبوعي كبير، وسلسلة أيام تحفّزك ألا تنقطع.</p></div>
+      <div class="feat"><div class="e">🧠</div><h3>ألعاب تنشيط العقل</h3><p>سباق الأرقام ولعبة الذاكرة وتحدي المعلومات — استراحة ممتعة بين جلسات الدراسة.</p></div>
+      <div class="feat"><div class="e">🏅</div><h3>نقاط وأوسمة ومستويات</h3><p>10 ألقاب و18 وساماً وتحدٍّ أسبوعي كبير، وتقدّم محفوظ لا يضيع أبداً.</p></div>
       <div class="feat"><div class="e">🩺</div><h3>تقييم أولي لمستواك</h3><p>دقيقة واحدة تقيّم فيها نفسك في كل مادة، فتُبنى خطتك على مقاسك وترى تطوّرك مع الوقت.</p></div>
       <div class="feat"><div class="e">🗂️</div><h3>بطاقات المراجعة الذكية</h3><p>اكتب أسئلة من دروسك، والتطبيق يذكّرك بمراجعتها في الوقت المثالي حتى تثبت في ذاكرتك.</p></div>
       <div class="feat"><div class="e">❓</div><h3>تحدي المعلومات</h3><p>60 سؤالاً في 11 مادة — اختبر معلوماتك بطريقة ممتعة واكسب النقاط.</p></div>
@@ -354,7 +363,7 @@
       <p>اختر الطريقة المناسبة لك — كلاهما مجاني ويعمل على الموبايل.</p>
       <div class="cta">
         <a class="btn light" href="app/">🌐 افتح التطبيق في المتصفح</a>
-        <a class="btn outline-light" href="https://github.com/abdulrahmanahmedelabed-prog/teacher/releases/latest/download/rehla-alawda.apk">📱 حمّل APK لأندرويد</a>
+        <a class="btn outline-light" href="https://github.com/abdulrahmanahmedelabed-prog/teacher/releases/latest/download/rehla-alawda.apk">📱 حمّل APK لأندرويد <small style="opacity:.8">(≈4 MB)</small></a>
       </div>
       <div class="dl-grid">
         <div>
@@ -420,6 +429,8 @@
   </div>
 </section>
 
+<div class="sticky-cta" id="stickyCta"><a class="btn" href="app/">✨ ابدأ الآن مجاناً</a></div>
+
 <footer>
   <div class="wrap">
     🚀 رحلة العودة — فكرة <b>هبة أبو اللبن</b> · صُنع بحب للطلاب ·
@@ -441,6 +452,12 @@
     b.addEventListener("click", Theme.toggle);
     document.addEventListener("themechange", sync);
     sync();
+  })();
+  // زر «ابدأ الآن» الثابت على الموبايل بعد تجاوز القسم الأول
+  (function () {
+    var bar = document.getElementById("stickyCta"), hero = document.querySelector(".hero");
+    if (!("IntersectionObserver" in window) || !bar || !hero) return;
+    new IntersectionObserver(function (en) { bar.classList.toggle("show", !en[0].isIntersecting); }).observe(hero);
   })();
   // ظهور الأقسام عند التمرير
   (function () {

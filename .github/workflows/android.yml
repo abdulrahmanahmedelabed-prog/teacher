@@ -11,8 +11,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-release
-  cancel-in-progress: true
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -32,6 +32,12 @@ jobs:
         run: |
           npx cap add android
           npx cap sync android
+      - name: Add Android permissions
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          grep -q "android.permission.VIBRATE" $MANIFEST || \
+            sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.VIBRATE" />#' $MANIFEST
+          grep -n "permission" $MANIFEST
       - name: Apply app icon
         run: |
           RES=android/app/src/main/res

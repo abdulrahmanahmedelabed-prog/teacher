@@ -1,29 +1,32 @@
-/* Service Worker: يجعل التطبيق يعمل بدون إنترنت ومع النت الضعيف */
-const CACHE = "rehla-v3";
-const ASSETS = ["./", "index.html", "styles.css", "data.js", "app.js", "theme.js", "manifest.json", "icon.svg", "icon-192.png", "icon-512.png"];
+/* Service Worker: يعمل بدون إنترنت ومع النت الضعيف.
+   كل ملفات الإصدار الواحد تُخزَّن معاً (لا خلط بين إصدارين)،
+   والإصدار الجديد يُفعَّل عندما يضغط المستخدم «حدّث الآن». */
+const CACHE = "rehla-v4";
+const ASSETS = ["./", "index.html", "styles.css", "theme.js", "data.js", "app.js", "manifest.json",
+  "icon.svg", "icon-192.png", "icon-512.png", "icon-maskable-512.png"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: "reload" يتجاوز كاش المتصفح حتى لا نخزّن ملفات قديمة
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: "reload" })))));
 });
+self.addEventListener("message", e => { if (e.data === "SKIP_WAITING") self.skipWaiting(); });
 self.addEventListener("activate", e => {
   e.waitUntil(
     caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
-/* من الكاش أولاً (سريع جداً على النت الضعيف)، ثم تحديث في الخلفية */
 self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET") return;
+  const req = e.request;
+  if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
+  if (req.mode === "navigate") {
+    e.respondWith(caches.match("index.html").then(r => r || fetch(req)));
+    return;
+  }
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then(cached => {
-      const net = fetch(e.request).then(res => {
-        if (res && res.ok && new URL(e.request.url).origin === location.origin) {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, copy));
-        }
-        return res;
-      }).catch(() => cached);
-      return cached || net;
-    })
+    caches.match(req, { ignoreSearch: true }).then(cached => cached || fetch(req).then(res => {
+      if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(new URL(req.url).pathname, copy)); }
+      return res;
+    }))
   );
 });

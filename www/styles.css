@@ -4,7 +4,8 @@
   --text: #1f1a3d;
   --muted: #6b6690;
   --primary: #6c4cf5;
-  --primary-2: #9b7bff;
+  --primary-2: #7b5cf0;
+  --primary-text: #5b3ce0;
   --accent: #ff8a3d;
   --good: #1fbf75;
   --warn: #ffb020;
@@ -25,6 +26,7 @@
     --shadow: 0 6px 20px rgba(0, 0, 0, .35);
     --xp-bg: #3d2f10;
     --xp-fg: #ffc964;
+    --primary-text: #a58bff;
   }
 }
 :root[data-theme="dark"] {
@@ -36,6 +38,7 @@
   --shadow: 0 6px 20px rgba(0, 0, 0, .35);
   --xp-bg: #3d2f10;
   --xp-fg: #ffc964;
+  --primary-text: #a58bff;
 }
 
 * { box-sizing: border-box; }
@@ -87,9 +90,9 @@ main { max-width: 720px; margin: 0 auto; padding: 16px; }
 }
 .btn:hover { filter: brightness(1.08); }
 .btn:active { transform: scale(.97); }
-.btn.secondary { background: transparent; color: var(--primary); border: 2px solid var(--primary); }
-.btn.accent { background: var(--accent); }
-.btn.good { background: var(--good); }
+.btn.secondary { background: transparent; color: var(--primary-text); border: 2px solid var(--primary); }
+.btn.accent { background: #c2560f; }
+.btn.good { background: #0f8a52; }
 .btn.block { width: 100%; }
 .btn.big { padding: 14px 20px; font-size: 1.1rem; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
@@ -126,7 +129,7 @@ main { max-width: 720px; margin: 0 auto; padding: 16px; }
 .challenge.done { border-color: var(--good); opacity: .75; }
 .challenge.done .ch-text { text-decoration: line-through; }
 .challenge .check {
-  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  flex: none; width: 44px; height: 44px; border-radius: 50%;
   border: 3px solid var(--primary); background: transparent; cursor: pointer;
   font-size: 1.1rem; display: grid; place-items: center; color: #fff;
 }
@@ -146,7 +149,8 @@ main { max-width: 720px; margin: 0 auto; padding: 16px; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .chip {
   border: 2px solid var(--line); background: var(--card); border-radius: 999px;
-  padding: 4px 14px; cursor: pointer;
+  padding: 4px 14px; cursor: pointer; min-height: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .chip.sel { border-color: var(--primary); background: var(--primary); color: #fff; }
 
@@ -199,10 +203,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 }
 .bottom-nav button {
   flex: 1; border: 0; background: transparent; padding: 8px 0 6px; cursor: pointer;
-  font-size: .78rem; color: var(--muted); display: flex; flex-direction: column; align-items: center;
+  font-size: .8rem; color: var(--muted); display: flex; flex-direction: column; align-items: center;
+  white-space: nowrap; min-height: 56px;
 }
 .bottom-nav button span { font-size: 1.35rem; line-height: 1.2; }
-.bottom-nav button.active { color: var(--primary); font-weight: 800; }
+.bottom-nav button.active { color: var(--primary-text); font-weight: 800; }
 
 .toast {
   position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%) translateY(20px);
@@ -243,7 +248,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 }
 
 /* البطاقات */
-.boxes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.boxes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .boxes .stat { padding: 8px 2px; }
 .flash {
   font-size: 1.3rem; font-weight: 800; padding: 26px 16px; margin: 12px 0;
@@ -297,5 +302,43 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
   flex: 1; border: 0; background: transparent; padding: 10px 4px; border-radius: 10px; cursor: pointer;
   font-weight: 700; color: var(--muted); min-height: 44px;
 }
-.seg button.sel { background: var(--card); color: var(--primary); box-shadow: var(--shadow); }
+.seg button.sel { background: var(--card); color: var(--primary-text); box-shadow: var(--shadow); }
 @media (prefers-reduced-motion: reduce) { .icon-btn .ico { transition: none; } }
+
+.btn.danger { background: #d93636; }
+.lesson-input { margin-top: 8px; }
+
+/* إمكانية الوصول: إطار تركيز واضح للوحة المفاتيح */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--primary-text); outline-offset: 2px;
+}
+h2[tabindex="-1"]:focus, h3[tabindex="-1"]:focus { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+/* أثناء التسجيل والتقييم: نخفي العدادات */
+body.bare .pill, body.bare #settingsBtn { display: none; }
+.top-stats { gap: 6px; }
+.icon-btn { width: 44px; height: 44px; }
+@media (max-width: 380px) { .brand { font-size: 1rem; } .pill { padding: 2px 8px; font-size: .85rem; } .icon-btn { width: 40px; height: 40px; } }
+
+/* الخطوة التالية */
+.next-step { border: 2px solid var(--primary); }
+.next-text { font-size: 1.08rem; font-weight: 700; margin: 6px 0 8px; }
+.sep { border: 0; border-top: 1px solid var(--line); margin: 14px 0 10px; }
+
+/* التقييم: نص تحت الوجوه */
+.level-btns button { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 56px; }
+.level-btns button small { font-size: .62rem; color: var(--muted); line-height: 1.2; }
+.level-btns button.sel small { color: var(--primary-text); font-weight: 700; }
+
+details.more summary { cursor: pointer; color: var(--primary-text); font-weight: 700; margin-top: 10px; min-height: 44px; display: flex; align-items: center; }
+details.more .badges { margin-top: 8px; }
+
+/* شريط التحديث */
+.update-bar {
+  position: fixed; inset-inline: 12px; bottom: 88px; z-index: 35; display: flex; gap: 10px; align-items: center;
+  justify-content: space-between; background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.update-bar .btn { padding: 8px 14px; }
