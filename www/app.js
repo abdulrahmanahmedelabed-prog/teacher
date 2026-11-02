@@ -1956,7 +1956,8 @@
   }
   function aiInfoCard() {
     return aiBase() ? "" : '<details class="card how"><summary>💜 كيف يعمل المعلم الذكي؟</summary><p class="small muted">' +
-      "افتح أي كتاب واضغط «افتح مع Claude»: نجهّز لك طلباً جاهزاً بصفّك ومادتك، وتُرفق الكتاب في Claude وتدرس معه مجاناً من حسابك." +
+      "افتح أي كتاب واضغط «افتح مع Claude»: نجهّز لك طلباً جاهزاً بصفّك ومادتك، وتُرفق الكتاب وتدرس معه مجاناً بحساب Google." +
+      (studentClass() <= 12 ? " حساب Claude للبالغين (18+)، فاستخدمه مع أحد والديك وبحسابه." : "") +
       "</p></details>";
   }
 
@@ -1993,9 +1994,9 @@
     } else if (big) {
       tutor += '<p class="small muted">الملف أكبر من 20 ميغابايت. لتستخدم المعلم داخل التطبيق: ارفع فصلاً واحداً أو صوّر صفحات الدرس. أو استخدم Claude مباشرة:</p>';
     } else {
-      tutor += '<p class="small muted">ادرس هذا الكتاب مع Claude مجاناً من حسابك: نجهّز لك الطلب، وأنت تُرفق الكتاب 📎 وترسل.</p>';
+      tutor += claudeLimitedToday() ? claudeRestCard() : claudeSteps();
     }
-    tutor += '<button class="btn ' + (ai && !big ? "outline" : "") + ' block" data-action="openClaude">💜 افتح مع Claude (مجاني)</button></section>';
+    tutor += (claudeLimitedToday() && !(ai && !big) ? "" : '<button class="btn ' + (ai && !big ? "outline" : "") + ' block" data-action="openClaude">💜 افتح مع Claude' + (studentClass() <= 12 ? " (مع أحد والديك)" : " (مجاني)") + "</button>") + "</section>";
     return head + tutor;
   }
 
@@ -2153,6 +2154,43 @@
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
   // بدون خادم: نجهّز طلباً جاهزاً ونفتح Claude ليُرفق الطالب كتابه ويدرس مجاناً من حسابه
+  /* ---------- Claude المجاني (claude.ai بحساب Google) — بلا أي تكلفة على المشروع ----------
+     التطبيق لا يستطيع معرفة حدّ Claude اليومي بنفسه (هو على claude.ai)، لذلك نسأل الطالب عند عودته. */
+  const claudeLimitedToday = () => !!dayRec().claudeLimit;
+  let claudePending = false;
+  function claudeSteps() {
+    const minor = studentClass() <= 12;
+    return '<ol class="claude-steps small">' +
+      "<li>اضغط «افتح مع Claude» — نجهّز لك الطلب بصفّك ومادتك.</li>" +
+      "<li>أول مرة فقط: اختر <b>«المتابعة باستخدام Google»</b>" + (minor ? " بحساب أحد والديك (Claude للبالغين 18+)" : "") + ". الحساب المجاني يكفي.</li>" +
+      "<li>اضغط 📎 وأرفق ملف الكتاب أو صورة الصفحة، ثم أرسل.</li>" +
+      "<li>ارجع لهنا عندما تنتهي — نحتفظ لك بتقدّمك.</li></ol>";
+  }
+  // رسالة تربوية عند انتهاء حدّ Claude المجاني اليومي، مع بدائل يعملها الطالب بنفسه
+  function claudeRestCard() {
+    const young = S.settings.young;
+    return '<div class="claude-rest">' +
+      '<div class="empty-emoji" aria-hidden="true">🌙</div>' +
+      '<p class="next-text center" data-autoread>' + (young ? "المعلم الذكي ينام الآن، ويعود غداً! تعال نلعب ونتعلّم معاً 🌟" :
+        "المعلم الذكي أخذ استراحته حتى الغد… وهذه فرصتك لتكون أنت المعلّم! 💪") + "</p>" +
+      (young ? "" : '<p class="small muted center">العلماء يقولون: ما تشرحه بنفسك تتذكّره أطول بكثير مما تقرؤه. جرّب واحدة من هذه الآن:</p>') +
+      '<div class="stack">' +
+      (dueCards().length ? '<button class="btn good block" data-action="go" data-v="cards">🗂️ راجع بطاقاتك (' + dueCards().length + ")</button>" : "") +
+      (young ? '<button class="btn ghost block" data-action="startLetters">🔤 العب «اسمع واختر»</button>' :
+        '<button class="btn ghost block" data-action="feynman">🗣️ اشرح الدرس بصوت عالٍ كأنك المعلّم</button>') +
+      '<button class="btn ghost block" data-action="writeReflect">✍️ اكتب أو سجّل ما تعلّمته اليوم</button>' +
+      '<button class="btn ghost block" data-action="startQuiz">❓ تحدّي المعلومات</button>' +
+      "</div>" +
+      '<p class="small muted center" style="margin-top:10px">' + (S.settings.together || young ? "👨‍👧 أو اطلب من أحد أفراد عائلتك أن يقرأ معك صفحة." : "يتجدد Claude المجاني بعد ساعات، ونكمل معاً غداً 🌱") + "</p></div>";
+  }
+  function askClaudeSession() {
+    claudePending = false;
+    showModal("💜", "كيف كانت جلستك مع Claude؟", "أخبرنا لنقترح عليك الخطوة التالية.",
+      '<div class="stack"><button class="btn block" data-action="claudeGood">👍 تعلّمت شيئاً جديداً</button>' +
+      '<button class="btn ghost block" data-action="claudeLimit">🌙 قال لي إن حدّي اليومي انتهى</button>' +
+      '<button class="linkbtn" data-action="closeModal">لم أبدأ بعد</button></div>');
+  }
+
   function openClaude(b) {
     const who = classLabel(studentClass());
     const prompt = "أنا طالب" + (who ? " في " + who : "") + " وأدرس مادة " + (b.subject || "") + "، وابتعدت عن الدراسة فترة. " +
@@ -2161,6 +2199,7 @@
     try { if (navigator.clipboard) navigator.clipboard.writeText(prompt).catch(() => {}); } catch (e) {}
     window.open("https://claude.ai/new?q=" + encodeURIComponent(prompt), "_blank", "noopener");
     toast(b.kind === "link" ? "فتحنا Claude ✔ أرسل الطلب الجاهز" : "فتحنا Claude ✔ أرفق الكتاب 📎 ثم أرسل");
+    claudePending = true;
     markActive(); save();
   }
 
@@ -2454,6 +2493,20 @@
       case "grade": if (el.dataset.ok === "1") fx("right"); gradeCard(el.dataset.ok === "1"); break;
       case "endReview": review = null; render(); break;
       case "share": shareProgress(); break;
+      case "claudeGood": closeModal(); addXP(5, "تعلّمت مع Claude"); setTimeout(() => { reflectOpen = true; view = "challenges"; render(); toast("✍️ اكتب أو سجّل ما تعلّمته — هكذا يثبت"); }, 300); break;
+      case "claudeLimit": {
+        closeModal();
+        dayRec().claudeLimit = true; save();
+        view = "books"; studyTab = "books"; render();
+        const box = document.querySelector(".claude-rest");
+        if (box) box.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+        fx("welcome");
+        break;
+      }
+      case "feynman":
+        showModal("🗣️", "كن أنت المعلّم", "اختر فكرة واحدة من درسك، واشرحها بصوت عالٍ لشخص تخيّله أمامك — أو لأحد من عائلتك. عندما تتوقف عند كلمة لا تفهمها، اكتبها في بطاقة جديدة لتسأل عنها غداً.",
+          '<div class="stack"><button class="btn block" data-action="focusFor" data-m="10" data-s="' + esc((S.profile.subjects[0]) || "عام") + '">⏱️ ابدأ 10 دقائق</button><button class="btn ghost block" data-action="closeModal">لاحقاً</button></div>');
+        break;
       case "say": if (SP()) { SP().stop(); sayNow(el.dataset.t); } break;
       case "mic": startMic(el.dataset.target); break;
       case "micCloud": case "micLocal": {
@@ -2735,6 +2788,7 @@
   // عند العودة للتطبيق: حدّث اليوم والمؤقت
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
+    if (claudePending && S.profile && $("#modal").classList.contains("hidden")) setTimeout(askClaudeSession, 400);
     syncReminders();
     if (S.timer && S.timer.end <= Date.now()) finishTimer();
     else if (S.timer && !S.timer.muted && window.Sound) Sound.startAmbient();
