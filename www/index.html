@@ -13,29 +13,30 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🚀 <span class="brand-text">رحلة العودة</span></div>
+    <div class="brand">🚀 <span class="brand-text" data-i18n="رحلة العودة">رحلة العودة</span></div>
     <div class="top-stats">
       <button type="button" class="pill" id="streakPill" data-action="streakSheet">🔥 0</button>
-      <span class="pill" id="xpPill" title="نقاطك">⭐ 0</span>
-      <button class="icon-btn" id="themeBtn" type="button" aria-label="تبديل الوضع"><span class="ico" aria-hidden="true">🌙</span></button>
-      <button class="icon-btn" id="settingsBtn" type="button" data-action="openSettings" aria-label="الإعدادات" title="الإعدادات"><span class="ico" aria-hidden="true">⚙️</span></button>
+      <span class="pill" id="xpPill" title="نقاطك" data-i18n-attr="title">⭐ 0</span>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="تبديل الوضع" data-i18n-attr="aria-label"><span class="ico" aria-hidden="true">🌙</span></button>
+      <button class="icon-btn" id="settingsBtn" type="button" data-action="openSettings" aria-label="الإعدادات" title="الإعدادات" data-i18n-attr="aria-label,title"><span class="ico" aria-hidden="true">⚙️</span></button>
     </div>
   </header>
 
   <main id="app"></main>
 
-  <nav class="bottom-nav" id="nav" aria-label="التنقل الرئيسي">
-    <button data-view="home" class="active"><span aria-hidden="true">🏠</span>الرئيسية</button>
-    <button data-view="challenges"><span aria-hidden="true">🎯</span>التحديات</button>
-    <button data-view="focus"><span aria-hidden="true">⏱️</span>تركيز</button>
-    <button data-view="cards"><span aria-hidden="true">📚</span>مذاكرة</button>
-    <button data-view="journey"><span aria-hidden="true">🗺️</span>رحلتي</button>
+  <nav class="bottom-nav" id="nav" aria-label="التنقل الرئيسي" data-i18n-attr="aria-label">
+    <button data-view="home" class="active"><span aria-hidden="true">🏠</span><span class="nav-l" data-i18n="الرئيسية">الرئيسية</span></button>
+    <button data-view="challenges"><span aria-hidden="true">🎯</span><span class="nav-l" data-i18n="التحديات">التحديات</span></button>
+    <button data-view="focus"><span aria-hidden="true">⏱️</span><span class="nav-l" data-i18n="تركيز">تركيز</span></button>
+    <button data-view="cards"><span aria-hidden="true">📚</span><span class="nav-l" data-i18n="مذاكرة">مذاكرة</span></button>
+    <button data-view="journey"><span aria-hidden="true">🗺️</span><span class="nav-l" data-i18n="رحلتي">رحلتي</span></button>
   </nav>
 
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody"><div class="modal-card" id="modalCard"></div></div>
   <div id="toast" class="toast" role="status"></div>
 
   <script src="data.js"></script>
+  <script src="i18n.js"></script>
   <script src="sound.js"></script>
   <script src="speech.js"></script>
   <script src="vendor-firebase-ai.js"></script>

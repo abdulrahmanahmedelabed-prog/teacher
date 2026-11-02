@@ -17,14 +17,17 @@
     girl: { g: "f", pitch: 1.3, rate: 0.97 },
     boy: { g: "m", pitch: 1.22, rate: 0.97 }
   };
-  const FEMALE = /female|woman|zariyah|salma|amina|hoda|laila|layla|mouna|rana|sana|fatima|noura|dalia|amany|zeina|reem|sara|hala|iman|\bf\d?\b|-a$|x-ard-|arc-|ar-xa-x-ard/i;
-  const MALE = /\bmale\b|\bman\b|hamed|shakir|naayf|tarik|bassel|omar|hamdan|fahed|ali\b|moaz|rami|saleh|taim|\bm\d?\b|ar-xa-x-arz|x-are-/i;
+  const FEMALE = /female|woman|samantha|victoria|karen|moira|tessa|fiona|zira|susan|aria\b|jenny|emma|libby|sonia|ava\b|allison|serena|kate|joanna|salli|zariyah|salma|amina|hoda|laila|layla|mouna|rana|sana|fatima|noura|dalia|amany|zeina|reem|sara|hala|iman|\bf\d?\b|-a$|x-ard-|arc-|ar-xa-x-ard/i;
+  const MALE = /\bmale\b|\bman\b|daniel|\balex\b|fred|david|\bmark\b|\bguy\b|ryan|george|thomas|rishi|aaron|arthur|oliver|\btom\b|hamed|shakir|naayf|tarik|bassel|omar|hamdan|fahed|ali\b|moaz|rami|saleh|taim|\bm\d?\b|ar-xa-x-arz|x-are-/i;
   const NATURAL = /natural|neural|online|enhanced|premium|wavenet|google/i;
-  let arVoices = [], ttsOk = false, speaking = false, queue = [], style = "woman", nativeVoices = [];
+  // لغة الواجهة (i18n.js): "ar" أو "en" — الأصوات تتبعها، ويمكن طلب لغة أخرى لجملة واحدة (مثل حروف العربية)
+  const uiLang = () => (window.I18N && window.I18N.lang === "en" ? "en" : "ar");
+  const langRe = l => (l === "en" ? /^en/i : /^ar/i);
+  let allVoices = [], arVoices = [], ttsOk = false, nativeLangs = null, speaking = false, queue = [], style = "woman", nativeVoices = [];
   const listeners = [], speakListeners = [];
   function clean(t) {
     return String(t || "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, " ")
-      .replace(/[«»*_#•→←✔✖]/g, " ").replace(/\s+/g, " ").trim();
+      .replace(/[«»“”*_#•→←✔✖]/g, " ").replace(/\s+/g, " ").trim();
   }
   function setOk(v) { if (v !== ttsOk) { ttsOk = v; listeners.forEach(f => { try { f(); } catch (e) {} }); } }
   function setSpeaking(v) { if (v !== speaking) { speaking = v; speakListeners.forEach(f => { try { f(v); } catch (e) {} }); } }
@@ -33,29 +36,32 @@
     let sc = 0;
     if (NATURAL.test(v.name || "")) sc += 4;
     if (/^ar[-_]?(PS|JO|LB|SY)/i.test(v.lang)) sc += 2; else if (/^ar[-_]?(SA|EG|AE)/i.test(v.lang)) sc += 1;
+    else if (/^en[-_]?(US|GB)/i.test(v.lang)) sc += 1;
     const vg = genderOf(v);
     if (vg === g) sc += 6; else if (vg && vg !== g) sc -= 3;
     if (v.localService === false) sc += 1; // أصوات الإنترنت عادة أكثر طبيعية
     return sc;
   }
-  function pickVoice() {
+  const voicesFor = l => (l === "ar" || !allVoices.length ? arVoices : allVoices.filter(v => langRe(l).test(v.lang)));
+  function pickVoice(l) {
     const g = (VOICE_STYLE[style] || VOICE_STYLE.woman).g;
-    return arVoices.slice().sort((a, b) => score(b, g) - score(a, g))[0] || null;
+    return voicesFor(l || uiLang()).slice().sort((a, b) => score(b, g) - score(a, g))[0] || null;
   }
   // هل يوجد صوت حقيقي بهذا الجنس؟ (وإلا نغيّر طبقة الصوت فقط)
-  const hasGender = g => arVoices.some(v => genderOf(v) === g);
+  const hasGender = (g, l) => voicesFor(l || uiLang()).some(v => genderOf(v) === g);
   function initTTS() {
     const T = plugin("TextToSpeech");
     if (T) {
-      T.getSupportedLanguages().then(r => setOk((r.languages || []).some(l => /^ar/i.test(l)))).catch(() => setOk(true));
-      if (T.getSupportedVoices) T.getSupportedVoices().then(r => { nativeVoices = (r.voices || []).map((v, i) => Object.assign({ i }, v)).filter(v => /^ar/i.test(v.lang || "")); }).catch(() => {});
+      T.getSupportedLanguages().then(r => { nativeLangs = r.languages || []; setOk(nativeLangs.some(l => langRe(uiLang()).test(l))); }).catch(() => setOk(true));
+      if (T.getSupportedVoices) T.getSupportedVoices().then(r => { nativeVoices = (r.voices || []).map((v, i) => Object.assign({ i }, v)).filter(v => /^(ar|en)/i.test(v.lang || "")); }).catch(() => {});
       return;
     }
     if (!("speechSynthesis" in window)) return;
     const pick = () => {
       const vs = speechSynthesis.getVoices() || [];
+      allVoices = vs;
       arVoices = vs.filter(v => /^ar/i.test(v.lang));
-      setOk(arVoices.length > 0);
+      setOk(voicesFor(uiLang()).length > 0);
     };
     pick();
     try { speechSynthesis.addEventListener("voiceschanged", pick); } catch (e) { speechSynthesis.onvoiceschanged = pick; }
@@ -74,24 +80,27 @@
     stopSpeak();
     const st = VOICE_STYLE[opts.voice || style] || VOICE_STYLE.woman;
     const volume = opts.volume == null ? 1 : opts.volume;
+    const lang = opts.lang === "ar" || opts.lang === "en" ? opts.lang : uiLang();
     const T = plugin("TextToSpeech");
     if (T) {
-      const nv = nativeVoices.slice().sort((a, b) => score(b, st.g) - score(a, st.g))[0];
+      if (nativeLangs && lang !== uiLang() && !nativeLangs.some(l => langRe(lang).test(l))) return false;
+      const nv = nativeVoices.filter(v => langRe(lang).test(v.lang || "")).sort((a, b) => score(b, st.g) - score(a, st.g))[0];
       const pitch = nv && genderOf(nv) === st.g ? st.pitch : st.pitch * (st.g === "m" ? 0.85 : 1.08);
       setSpeaking(true);
-      T.speak(Object.assign({ text: t, lang: "ar", rate: st.rate, pitch, volume, category: "ambient" }, nv ? { voice: nv.i } : {}))
+      T.speak(Object.assign({ text: t, lang: lang === "en" ? "en-US" : "ar", rate: st.rate, pitch, volume, category: "ambient" }, nv ? { voice: nv.i } : {}))
         .catch(() => {}).finally(() => setSpeaking(false));
       return true;
     }
     try {
-      const v = pickVoice();
+      const v = pickVoice(lang);
+      if (!v && lang !== uiLang()) return false;
       // لا يوجد صوت رجل/امرأة حقيقي؟ نقرّب الطبقة قليلاً (باعتدال حتى لا يصبح الصوت مضحكاً)
-      const pitch = v && genderOf(v) === st.g ? st.pitch : Math.max(0.6, Math.min(1.6, st.pitch * (st.g === "m" ? (hasGender("m") ? 1 : 0.8) : (hasGender("f") ? 1 : 1.12))));
+      const pitch = v && genderOf(v) === st.g ? st.pitch : Math.max(0.6, Math.min(1.6, st.pitch * (st.g === "m" ? (hasGender("m", lang) ? 1 : 0.8) : (hasGender("f", lang) ? 1 : 1.12))));
       queue = sentences(t);
       const next = () => {
         if (!queue.length) { setSpeaking(false); return; }
         const u = new SpeechSynthesisUtterance(queue.shift());
-        if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "ar";
+        if (v) { u.voice = v; u.lang = v.lang; } else u.lang = lang === "en" ? "en-US" : "ar";
         u.rate = st.rate; u.pitch = pitch; u.volume = volume;
         u.onend = () => setTimeout(next, 180);
         u.onerror = () => { queue = []; setSpeaking(false); };
@@ -135,7 +144,8 @@
         if (p.speechRecognition !== "granted") p = await S.requestPermissions().catch(() => ({}));
         if (p.speechRecognition && p.speechRecognition !== "granted") throw new Error("denied");
         const langs = ((await S.getSupportedLanguages().catch(() => ({}))).languages) || [];
-        const lang = ["ar-PS", "ar-JO", "ar-SA", "ar-EG", "ar"].find(l => langs.includes(l)) || "ar-SA";
+        const lang = uiLang() === "en" ? (["en-US", "en-GB", "en"].find(l => langs.includes(l)) || "en-US")
+          : ["ar-PS", "ar-JO", "ar-SA", "ar-EG", "ar"].find(l => langs.includes(l)) || "ar-SA";
         await S.addListener("partialResults", d => { const m = d && d.matches && d.matches[0]; if (m && active) { active.onText(m); quietReset(); } });
         S.start({ language: lang, maxResults: 1, partialResults: true, popup: false }).then(r => {
           const m = r && r.matches && r.matches[0]; if (m && active) active.onText(m);
@@ -147,7 +157,7 @@
     if (!SR) { finish(new Error("unavailable")); return; }
     try {
       rec = new SR();
-      rec.lang = "ar-PS"; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+      rec.lang = uiLang() === "en" ? "en-US" : "ar-PS"; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
       rec.onresult = ev => {
         let txt = "";
         for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;

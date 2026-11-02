@@ -214,6 +214,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
   white-space: nowrap; min-height: 56px;
 }
 .bottom-nav button span { font-size: 1.35rem; line-height: 1.2; }
+.bottom-nav button span.nav-l { font-size: inherit; line-height: inherit; }
 .bottom-nav button.active { color: var(--primary-text); font-weight: 800; }
 
 .toast {
@@ -267,7 +268,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 /* تحدي المعلومات */
 .opts { display: grid; gap: 10px; }
 .opt {
-  text-align: right; padding: 12px 16px; border-radius: 14px; cursor: pointer;
+  text-align: start; padding: 12px 16px; border-radius: 14px; cursor: pointer;
   border: 2px solid var(--line); background: var(--bg); font-weight: 600;
 }
 .opt:not(:disabled):hover { border-color: var(--primary); }
@@ -531,6 +532,7 @@ input[type=range] { width: 100%; accent-color: var(--primary); min-height: 36px;
 .chat-input { display: flex; gap: 8px; align-items: flex-end; }
 .chat-input textarea { min-height: 48px; max-height: 140px; resize: none; }
 .chat-input .btn { width: 52px; flex: none; font-size: 1.2rem; transform: scaleX(-1); }
+html[dir="ltr"] .chat-input .btn { transform: none; }
 .care-note { color: var(--text); background: var(--bg); padding: 8px 12px; border-radius: var(--r-sm); }
 .grid-2 > .btn, .grid-3 > .btn { padding-inline: 8px; white-space: nowrap; }
 
@@ -578,3 +580,4 @@ body.young .challenge .ch-text { font-size: 1.1rem; }
   border: 2px solid var(--line); background: transparent; color: inherit; }
 .voice-pick button span { font-size: 1.5rem; }
 .voice-pick button.sel { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); font-weight: 700; }
+.lang-seg { margin: 0 0 14px; }

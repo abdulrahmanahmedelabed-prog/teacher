@@ -105,6 +105,7 @@
     if (!msgs.length || msgs[msgs.length - 1].role !== "user") fail("bad_messages", 400);
     const ctx = "صف الطالب: " + clip(p.grade, 40) + " · المادة: " + clip(p.subject, 40) + " · الكتاب: " + clip(p.title, 80) +
       (p.simple ? "\n(اكتب بجمل قصيرة جداً وكلمات سهلة، فقد يُقرأ ردّك بصوت لطالب صغير أو لطالب يستعيد مهارة القراءة)" : "") +
+      (p.lang === "en" ? "\n(IMPORTANT: The student uses the app in English. Reply only in simple, clear, warm English suited to the student's grade — short sentences and easy words. Keep important terms as they appear in the book, and add the English word in brackets when the book is in another language.)" : "") +
       "\n\nنص الدرس من كتاب الطالب:\n«««\n" + clip(p.notes, 24000) + "\n»»»";
     return msgs.map((m, i) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: (i === 0 ? ctx + "\n\n" : "") + clip(m.text, 4000) }] }));
   }
@@ -112,7 +113,8 @@
     const names = p.deep ? [deepName(), fastName()] : [fastName()];
     const resp = await run(names, { contents: contentsOf(p) }, Object.assign({ maxOutputTokens: 1500 }, low));
     const t = textOf(resp);
-    return { text: t === null ? "لا أستطيع المساعدة في هذا الطلب. جرّب أن تسأل عن جزء آخر من الدرس 🙂" : (t || "…") };
+    const refuse = p.lang === "en" ? "I can't help with this request. Try asking about another part of the lesson 🙂" : "لا أستطيع المساعدة في هذا الطلب. جرّب أن تسأل عن جزء آخر من الدرس 🙂";
+    return { text: t === null ? refuse : (t || "…") };
   }
   async function cards(p) {
     const S = window.FirebaseAI.Schema;

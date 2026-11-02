@@ -152,7 +152,7 @@
     /* الخطوات */
     .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: s; }
     .step { background: var(--card); border-radius: 20px; padding: 24px; box-shadow: var(--shadow); position: relative; }
-    .step::before { counter-increment: s; content: counter(s); position: absolute; top: -16px; right: 20px; width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: #fff; display: grid; place-items: center; font-weight: 900; }
+    .step::before { counter-increment: s; content: counter(s); position: absolute; top: -16px; inset-inline-start: 20px; width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: #fff; display: grid; place-items: center; font-weight: 900; }
     .step .e { font-size: 2rem; }
 
     /* المراحل */
@@ -178,7 +178,7 @@
     .download { background: linear-gradient(135deg, var(--primary), #b05cff 60%, var(--accent)); color: #fff; border-radius: 28px; padding: 48px 28px; text-align: center; }
     .download p { opacity: .92; max-width: 560px; margin: 0 auto 24px; }
     .download .cta { justify-content: center; }
-    .dl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 760px; margin: 28px auto 0; text-align: right; }
+    .dl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 760px; margin: 28px auto 0; text-align: start; }
     .dl-grid > div { background: rgba(255,255,255,.14); border-radius: 18px; padding: 18px; }
     .dl-grid ol { margin: 6px 0 0; padding-inline-start: 20px; font-size: .95rem; }
 
@@ -203,7 +203,7 @@
       .stages { grid-template-columns: 1fr 1fr; }
       .stages .stage:last-child { grid-column: span 2; }
       .offline { grid-template-columns: 1fr; text-align: center; padding: 28px 20px; }
-      .offline ul { text-align: right; }
+      .offline ul { text-align: start; }
       .dl-grid { grid-template-columns: 1fr; }
       section { padding: 48px 0; }
     }
@@ -234,6 +234,7 @@
       <a href="#faq">أسئلة</a>
       <a href="#contact">تواصل</a>
       <a class="btn sm" href="app/">ابدأ الآن</a>
+      <button class="theme-toggle" id="langBtn" type="button">EN</button>
       <button class="theme-toggle" id="themeBtn" type="button" aria-label="تبديل الوضع">🌙</button>
     </div>
   </div>
@@ -344,7 +345,7 @@
     <div class="offline">
       <div class="e">📶</div>
       <div>
-        <h2 style="text-align:right;margin-bottom:6px">صُمّم لظروفك الحقيقية</h2>
+        <h2 style="text-align:start;margin-bottom:6px">صُمّم لظروفك الحقيقية</h2>
         <p style="margin:0">نعرف أن النت ضعيف والكهرباء تنقطع، لذلك بنيناه ليعمل في كل الأحوال:</p>
         <ul>
           <li>يعمل <b>بدون إنترنت</b> بالكامل بعد أول فتح.</li>
@@ -410,7 +411,7 @@
     <div class="contact">
       <div class="avatar">👩‍🏫</div>
       <div class="grow">
-        <h2 style="text-align:right;margin-bottom:4px">تواصل معنا</h2>
+        <h2 style="text-align:start;margin-bottom:4px">تواصل معنا</h2>
         <p style="margin:0 0 4px"><b>هبة أبو اللبن</b> — صاحبة فكرة «رحلة العودة»</p>
         <p class="muted-l" style="margin:0 0 16px">عندك سؤال، اقتراح، أو تحتاج مساعدة؟ أو بدك تقيّم التطبيق؟ رأيك يهمنا ويساعدنا نطوّره للطلاب.</p>
         <div class="cta">
@@ -441,13 +442,133 @@
 </footer>
 
 <script>
+  /* اللغة: العربية (الأصل) / English — تُشارك مع التطبيق عبر rehla-lang و settings.lang.
+     الترجمة: قاموس مفتاحه محتوى العنصر العربي كما هو في الصفحة. */
+  (function () {
+    var EN = {
+      "كيف يعمل": "How it works", "الميزات": "Features", "التحميل": "Download", "أسئلة": "FAQ", "تواصل": "Contact", "ابدأ الآن": "Start now",
+      "🎓 مجاني بالكامل · يعمل بدون إنترنت": "🎓 Completely free · Works offline",
+      "ابتعدت عن الدراسة؟<br><span>ارجع خطوة بخطوة</span><br>وصِل للتفوّق 🚀": "Been away from school?<br><span>Come back step by step</span><br>and reach the top 🚀",
+      "«رحلة العودة» رفيقك اليومي: يبدأ معك بمهام صغيرة جداً لا تأخذ أكثر من دقائق، ويكبر معك كل يوم بتحديات ممتعة ونقاط وأوسمة، حتى تستعيد إيقاعك وتحقق هدفك.": "“Journey Back” is your daily buddy: it starts with tiny tasks that take just a few minutes, and grows with you every day through fun challenges, points and badges — until you get your rhythm back and reach your goal.",
+      "✨ ابدأ رحلتك الآن": "✨ Start your journey now",
+      "📱 حمّل تطبيق Android <small style=\"opacity:.75\">(≈4 MB)</small>": "📱 Get the Android app <small style=\"opacity:.75\">(≈4 MB)</small>",
+      "✔ بدون تسجيل حساب": "✔ No account needed", "✔ بياناتك على جهازك": "✔ Your data stays on your device", "✔ مناسب للنت الضعيف": "✔ Works on weak internet",
+      "🚀 رحلة العودة": "🚀 Journey Back", "مساء الخير، سارة 👋": "Good evening, Sara 👋", "المستوى 3 — المثابر · 🌱 بناء العادة": "Level 3 — Never-Give-Up · 🌱 Build the habit",
+      "اشرب ماء وتمدّد 5 دقائق": "Drink water and stretch for 5 minutes", "لخّص درساً من الأحياء في 5 أسطر": "Sum up a Biology lesson in 5 lines",
+      "اشرح قاعدة رياضيات بصوت عالٍ": "Explain a math rule out loud", "حوّل معلومة إلى رسمة أو قصة": "Turn a fact into a drawing or a story",
+      "🏅 وسام جديد: أسبوع كامل!": "🏅 New badge: A full week!", "🔥 6 أيام متتالية": "🔥 6 days in a row",
+      "هل تشعر بهذا؟": "Do you feel like this?", "الظروف أبعدتك عن الدراسة… والآن العودة تبدو صعبة. لست وحدك.": "Hard times kept you away from studying… and now coming back feels hard. You're not alone.",
+      "لا أعرف من أين أبدأ": "I don't know where to start", "الدروس كثيرة، وكل شيء يبدو متراكماً.": "There are so many lessons, and everything feels piled up.",
+      "فقدت الحماس": "I lost my motivation", "أفتح الكتاب، ثم أغلقه بعد دقيقتين.": "I open the book, then close it two minutes later.",
+      "الظروف صعبة": "Life is hard right now", "نت ضعيف، كهرباء متقطعة، ووقت قليل.": "Weak internet, power cuts, and little time.",
+      "الحل ليس أن تدرس 6 ساعات فجأة… الحل أن تبدأ <span>بـ 5 دقائق</span> اليوم، و<span>تكبر كل يوم</span>.": "The answer isn't suddenly studying for 6 hours… it's starting <span>with 5 minutes</span> today, and <span>growing every day</span>.",
+      "كيف يعمل؟": "How does it work?", "ثلاث خطوات بسيطة، وأقل من دقيقة لتبدأ.": "Three simple steps, and less than a minute to start.",
+      "عرّفنا عليك": "Tell us about you", "اسمك، موادك، وكم دقيقة تستطيع أن تدرس يومياً. بدون حساب ولا بريد إلكتروني.": "Your name, your subjects, and how many minutes you can study a day. No account, no email.",
+      "أنجز تحديات اليوم": "Do today's challenges", "تحديات صغيرة مصمّمة على قدّك، تتغيّر حسب مرحلتك ومزاجك اليوم.": "Small challenges made just for you, changing with your stage and today's mood.",
+      "اصعد المستويات": "Level up", "اجمع النقاط والأوسمة، وحافظ على سلسلتك 🔥، وتقدّم في رحلتك نحو التفوّق.": "Collect points and badges, keep your streak 🔥, and move forward on your journey to the top.",
+      "رحلتك من 5 مراحل 🗺️": "Your journey in 5 stages 🗺️", "نبدأ بربع وقتك فقط، ونزيده تدريجياً مع كل يوم دراسة، حتى تصل لإيقاعك الكامل دون ضغط.": "We start with just a quarter of your time and add a little with every study day, until you reach your full rhythm — no pressure.",
+      "إشعال الشرارة": "Light the spark", "مهام صغيرة تكسر حاجز البداية": "Tiny tasks that break the ice", "25٪ من وقتك": "25% of your time",
+      "بناء العادة": "Build the habit", "وقت ثابت يومياً، الاستمرار أولاً": "A fixed time every day — showing up comes first", "40٪ · بعد 3 أيام": "40% · after 3 days",
+      "استعادة الأساس": "Rebuild the basics", "مراجعة ما نسيته خطوة بخطوة": "Review what you forgot, step by step", "60٪ · بعد 10 أيام": "60% · after 10 days",
+      "الانطلاق": "Take off", "تمارين أكثر وتحديات أصعب": "More practice and harder challenges", "85٪ · بعد 21 يوماً": "85% · after 21 days",
+      "التفوّق": "Shine", "إتقان واستعداد للامتحانات": "Mastery and exam prep", "100٪ · بعد 35 يوماً": "100% · after 35 days",
+      "كل ما تحتاجه لتعود… وتستمتع": "Everything you need to come back… and enjoy it", "مصمّم ليجعل الدراسة لعبة تريد أن تكسبها.": "Made to turn studying into a game you want to win.",
+      "تحديات يومية ذكية": "Smart daily challenges", "إحماء، دراسة، استرجاع، إبداع، وعناية بنفسك — تتجدد كل يوم حسب موادك.": "Warm-up, study, recall, creativity and self-care — fresh every day, based on your subjects.",
+      "«تايه؟ من وين أبدأ»": "“Feeling lost? Where do I start?”", "زر واحد يأخذك في 5 خطوات صغيرة جداً لتبدأ فوراً، بدون تفكير.": "One button walks you through 5 tiny steps so you can start right away, without overthinking.",
+      "يفهم مزاجك": "It understands your mood", "يومك صعب؟ تخفّ التحديات. متحمس؟ يظهر لك تحدٍّ إضافي بمكافأة أكبر.": "Hard day? The challenges get lighter. Excited? You get a bonus challenge with a bigger reward.",
+      "مؤقت تركيز": "Focus timer", "جلسات من 5 إلى 40 دقيقة، كل دقيقة = نقطتان، ويكمل حتى لو انقطعت الكهرباء.": "Sessions from 5 to 40 minutes, each minute = 2 points, and it keeps going even if the power goes out.",
+      "ألعاب تنشيط العقل": "Brain games", "سباق الأرقام ولعبة الذاكرة وتحدي المعلومات — استراحة ممتعة بين جلسات الدراسة.": "Number race, memory game and quiz challenge — a fun break between study sessions.",
+      "نقاط وأوسمة ومستويات": "Points, badges and levels", "10 ألقاب و18 وساماً وتحدٍّ أسبوعي كبير، وتقدّم محفوظ لا يضيع أبداً.": "10 titles, 18 badges, a big weekly challenge, and progress that's never lost.",
+      "تقييم أولي لمستواك": "A first check of your level", "دقيقة واحدة تقيّم فيها نفسك في كل مادة، فتُبنى خطتك على مقاسك وترى تطوّرك مع الوقت.": "One minute to rate yourself in each subject, so your plan fits you and you can see yourself grow over time.",
+      "بطاقات المراجعة الذكية": "Smart review cards", "اكتب أسئلة من دروسك، والتطبيق يذكّرك بمراجعتها في الوقت المثالي حتى تثبت في ذاكرتك.": "Write questions from your lessons, and the app reminds you to review them at just the right time so they stick.",
+      "تحدي المعلومات": "Quiz challenge", "60 سؤالاً في 11 مادة — اختبر معلوماتك بطريقة ممتعة واكسب النقاط.": "60 questions in 11 subjects — test what you know in a fun way and earn points.",
+      "صُمّم لظروفك الحقيقية": "Made for real life", "نعرف أن النت ضعيف والكهرباء تنقطع، لذلك بنيناه ليعمل في كل الأحوال:": "We know the internet is weak and the power goes out, so we built it to work no matter what:",
+      "يعمل <b>بدون إنترنت</b> بالكامل بعد أول فتح.": "Works fully <b>offline</b> after the first time you open it.",
+      "حجمه صغير جداً ويفتح بسرعة حتى على النت البطيء.": "It's very small and opens fast, even on slow internet.",
+      "كل تقدّمك يُحفظ على جهازك فوراً، ويمكنك نسخه احتياطياً.": "All your progress is saved on your device right away, and you can back it up.",
+      "ابدأ رحلتك اليوم 🚀": "Start your journey today 🚀", "اختر الطريقة المناسبة لك — كلاهما مجاني ويعمل على الموبايل.": "Pick the way that suits you — both are free and work on phones.",
+      "🌐 افتح التطبيق في المتصفح": "🌐 Open the app in your browser",
+      "📱 حمّل APK لأندرويد <small style=\"opacity:.8\">(≈4 MB)</small>": "📱 Download the Android APK <small style=\"opacity:.8\">(≈4 MB)</small>",
+      "🌐 من المتصفح (أي موبايل)": "🌐 From the browser (any phone)", "افتح التطبيق من الزر بالأعلى.": "Open the app with the button above.",
+      "من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية».": "From the browser menu, choose “Add to Home screen”.", "صار عندك تطبيق يعمل بدون نت ✔": "Now you have an app that works offline ✔",
+      "📱 تطبيق Android": "📱 Android app", "حمّل ملف APK من الزر بالأعلى.": "Download the APK file with the button above.",
+      "افتحه، واسمح بـ «التثبيت من مصادر غير معروفة» إذا طُلب.": "Open it, and allow “Install from unknown sources” if asked.", "ثبّت التطبيق وابدأ ✔": "Install the app and start ✔",
+      "أسئلة شائعة": "Frequently asked questions", "كل ما تريد معرفته قبل أن تبدأ.": "Everything you want to know before you start.",
+      "هل التطبيق مجاني؟": "Is the app free?", "نعم، مجاني بالكامل وبدون إعلانات.": "Yes — completely free, with no ads.",
+      "هل أحتاج إنترنت؟": "Do I need internet?", "فقط في أول مرة تفتحه أو تحمّله. بعدها يعمل بدون إنترنت تماماً.": "Only the first time you open or download it. After that it works completely offline.",
+      "هل أحتاج إنشاء حساب؟": "Do I need to create an account?", "لا. تكتب اسمك فقط، وكل بياناتك تبقى على جهازك ولا تُرسل لأي مكان.": "No. You just type your name, and all your data stays on your device and isn't sent anywhere.",
+      "لمن هذا التطبيق؟": "Who is this app for?", "لأي طالب — من الابتدائي حتى الجامعة — ابتعد عن الدراسة فترة ويريد أن يعود تدريجياً، أو يريد فقط أن يجعل دراسته ممتعة ومنتظمة.": "Any student — from elementary school to university — who has been away from studying and wants to come back step by step, or who just wants studying to be fun and regular.",
+      "ماذا لو انقطعت يوماً؟": "What if I miss a day?", "لا مشكلة! تبدأ سلسلة جديدة، وتقدّمك في المستويات والمراحل يبقى محفوظاً. المهم أن تعود.": "No problem! You start a new streak, and your levels and stages stay saved. What matters is that you come back.",
+      "كيف أرسل رأيي أو اقتراحي؟": "How do I send feedback or ideas?", "من صفحة «رحلتي» داخل التطبيق: قسم «رأيك يهمنا» — قيّم بالنجوم واكتب اقتراحك. أو راسلنا مباشرة على meheba65@gmail.com.": "From the “My journey” page in the app: the “Your opinion matters” section — give stars and write your idea. Or email us directly at meheba65@gmail.com.",
+      "كيف أنقل تقدّمي لجهاز آخر؟": "How do I move my progress to another device?", "من الإعدادات اختر «تصدير» لحفظ ملف نسخة احتياطية، ثم «استيراد» على الجهاز الجديد.": "In Settings, choose “Export” to save a backup file, then “Import” on the new device.",
+      "تواصل معنا": "Contact us", "<b>هبة أبو اللبن</b> — صاحبة فكرة «رحلة العودة»": "<b>Heba Abu Al-Laban</b> — the creator of “Journey Back”",
+      "عندك سؤال، اقتراح، أو تحتاج مساعدة؟ أو بدك تقيّم التطبيق؟ رأيك يهمنا ويساعدنا نطوّره للطلاب.": "Have a question or an idea, or need help? Want to rate the app? Your opinion matters and helps us make it better for students.",
+      "💡 أرسل اقتراحاً": "💡 Send an idea",
+      "«إِنَّ مَعَ الْعُسْرِ يُسْرًا» 💜": "“Indeed, with hardship comes ease.” (Quran 94:6) 💜",
+      "ظروفك صعبة، لكن إصرارك أقوى. ابدأ بـ 5 دقائق.": "Your situation is hard, but your determination is stronger. Start with 5 minutes.",
+      "هبة أبو اللبن": "Heba Abu Al-Laban", "✨ ابدأ الآن مجاناً": "✨ Start now for free", "الكود مفتوح على GitHub": "Open source on GitHub",
+      "رحلة العودة — ارجع للدراسة خطوة بخطوة": "Journey Back — get back to studying step by step",
+      "ابتعدت عن الدراسة ولا تعرف من أين تبدأ؟ رحلة العودة تطبيق مجاني يعيدك للدراسة بتحديات يومية صغيرة ونقاط ومستويات وألعاب، ويعمل بدون إنترنت.": "Been away from studying and don't know where to start? Journey Back is a free app that brings you back with small daily challenges, points, levels and games — and it works offline.",
+      "تطبيق مجاني يحفّزك للعودة إلى الدراسة والتفوّق: تحديات يومية، نقاط، أوسمة، مؤقت تركيز، ويعمل بدون إنترنت.": "A free app that motivates you to get back to studying and shine: daily challenges, points, badges, a focus timer — and it works offline.",
+      "التبديل إلى الوضع الفاتح": "Switch to light mode", "التبديل إلى الوضع الداكن": "Switch to dark mode", "تبديل الوضع": "Switch theme"
+    };
+    function getLang() {
+      try {
+        var st = JSON.parse(localStorage.getItem("rehla-state-v1") || "null");
+        if (st && st.settings && (st.settings.lang === "en" || st.settings.lang === "ar")) return st.settings.lang;
+        var l = localStorage.getItem("rehla-lang");
+        if (l === "en" || l === "ar") return l;
+        if (st) return "ar";
+      } catch (e) {}
+      return /^en\b/i.test(navigator.language || "") ? "en" : "ar";
+    }
+    function setLang(l) {
+      try {
+        localStorage.setItem("rehla-lang", l);
+        var st = JSON.parse(localStorage.getItem("rehla-state-v1") || "null");
+        if (st && typeof st === "object") { st.settings = st.settings || {}; st.settings.lang = l; localStorage.setItem("rehla-state-v1", JSON.stringify(st)); }
+      } catch (e) {}
+      location.reload();
+    }
+    var lang = getLang();
+    window.LandingLang = { lang: lang, tr: function (s) { return lang === "en" && EN[s] != null ? EN[s] : s; } };
+    var btn = document.getElementById("langBtn");
+    if (btn) {
+      btn.textContent = lang === "en" ? "ع" : "EN";
+      btn.setAttribute("lang", lang === "en" ? "ar" : "en");
+      btn.setAttribute("aria-label", lang === "en" ? "العربية" : "English");
+      btn.title = btn.getAttribute("aria-label");
+      btn.addEventListener("click", function () { setLang(lang === "en" ? "ar" : "en"); });
+    }
+    if (lang !== "en") return;
+    var root = document.documentElement;
+    root.lang = "en"; root.dir = "ltr";
+    document.title = EN[document.title] || document.title;
+    document.querySelectorAll('meta[name="description"], meta[property="og:description"], meta[property="og:title"]').forEach(function (m) { var c = m.getAttribute("content"); if (EN[c]) m.setAttribute("content", EN[c]); });
+    (function walk(el) {
+      for (var c = el.firstElementChild; c; c = c.nextElementSibling) {
+        if (c.tagName === "SCRIPT" || c.tagName === "STYLE") continue;
+        var k = c.innerHTML.trim();
+        if (EN[k] != null) { c.innerHTML = EN[k]; continue; }
+        walk(c);
+      }
+      // نصوص مختلطة مع عناصر (مثل الشعار والتذييل)
+      for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && /[؀-ۿ]/.test(n.nodeValue)) {
+        n.nodeValue = n.nodeValue.replace("رحلة العودة — فكرة", "Journey Back — an idea by").replace("· صُنع بحب للطلاب ·", "· made with love for students ·").replace("رحلة العودة", "Journey Back");
+      }
+    })(document.body);
+    document.querySelectorAll('a[href^="mailto:"]').forEach(function (a) { a.href = a.href.replace(/subject=[^&]*/, "subject=" + encodeURIComponent("Journey Back")); });
+  })();
+</script>
+<script>
   // زر الوضع الفاتح/الداكن
   (function () {
     var b = document.getElementById("themeBtn");
     function sync() {
       var dark = Theme.effective() === "dark";
       b.textContent = dark ? "☀️" : "🌙";
-      b.setAttribute("aria-label", dark ? "التبديل إلى الوضع الفاتح" : "التبديل إلى الوضع الداكن");
+      var T = window.LandingLang ? LandingLang.tr : function (x) { return x; };
+      b.setAttribute("aria-label", T(dark ? "التبديل إلى الوضع الفاتح" : "التبديل إلى الوضع الداكن"));
       b.title = b.getAttribute("aria-label");
     }
     b.addEventListener("click", Theme.toggle);
