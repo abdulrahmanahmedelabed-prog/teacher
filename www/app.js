@@ -689,6 +689,11 @@
       [20, 30, 45, 60, 90, 120].map(m => '<option value="' + m + '"' + (m === p.minutes ? " selected" : "") + ">" + m + "</option>").join("") + "</select>" +
       '<label for="obGoal">هدفي</label><input type="text" id="obGoal" maxlength="80" value="' + esc(p.goal) + '">' +
       '<br><br><button class="btn block" data-action="saveSettings">حفظ</button></div>' +
+      '<div class="card"><h3>🎨 المظهر</h3><p class="small muted">«تلقائي» يتبع إعدادات جهازك. الوضع الداكن مريح للعين ليلاً ويوفّر البطارية.</p>' +
+      '<div class="seg" role="radiogroup" aria-label="المظهر">' +
+      [["auto", "🌓 تلقائي"], ["light", "☀️ فاتح"], ["dark", "🌙 داكن"]].map(t =>
+        '<button role="radio" aria-checked="' + (Theme.get() === t[0]) + '" class="' + (Theme.get() === t[0] ? "sel" : "") + '" data-action="setTheme" data-t="' + t[0] + '">' + t[1] + "</button>").join("") +
+      "</div></div>" +
       '<div class="card"><h3>💾 نسخة احتياطية</h3><p class="small muted">بياناتك محفوظة على جهازك فقط. انسخها احتياطياً لتنقلها لجهاز آخر.</p>' +
       '<div class="grid-2"><button class="btn secondary" data-action="export">تصدير</button>' +
       '<button class="btn secondary" data-action="import">استيراد</button></div>' +
@@ -1154,6 +1159,7 @@
       case "grade": gradeCard(el.dataset.ok === "1"); break;
       case "endReview": review = null; render(); break;
       case "share": shareProgress(); break;
+      case "setTheme": Theme.set(el.dataset.t); break;
       case "setAway": assessDraft.away = +el.dataset.i; render(); break;
       case "setLevel": assessDraft.levels[el.dataset.s] = +el.dataset.v; render(); break;
       case "saveAssess": saveAssess(); break;
@@ -1212,6 +1218,28 @@
     if (S.timer && S.timer.end <= Date.now()) finishTimer();
     else if (S.profile && S.daily && S.daily.date !== today()) render();
   });
+
+  /* ---------- زر الوضع في الشريط العلوي ---------- */
+  function syncThemeUI() {
+    const dark = Theme.effective() === "dark";
+    const b = $("#themeBtn");
+    if (b) {
+      b.querySelector(".ico").textContent = dark ? "☀️" : "🌙";
+      b.setAttribute("aria-label", dark ? "التبديل إلى الوضع الفاتح" : "التبديل إلى الوضع الداكن");
+      b.title = b.getAttribute("aria-label");
+    }
+    document.querySelectorAll('[data-action="setTheme"]').forEach(x => {
+      const on = x.dataset.t === Theme.get();
+      x.classList.toggle("sel", on);
+      x.setAttribute("aria-checked", String(on));
+    });
+  }
+  $("#themeBtn").addEventListener("click", () => {
+    Theme.toggle();
+    toast(Theme.effective() === "dark" ? "🌙 الوضع الداكن" : "☀️ الوضع الفاتح");
+  });
+  document.addEventListener("themechange", syncThemeUI);
+  syncThemeUI();
 
   /* ================= التشغيل ================= */
   render();

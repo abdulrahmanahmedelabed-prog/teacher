@@ -10,16 +10,32 @@
   --warn: #ffb020;
   --line: #e4e0fb;
   --shadow: 0 6px 20px rgba(60, 40, 160, .10);
+  --xp-bg: #fff2d6;
+  --xp-fg: #a76800;
+  color-scheme: light dark;
 }
+/* الوضع الداكن: تلقائياً حسب الجهاز ما لم يختر المستخدم «فاتح»، أو عند اختياره «داكن» */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #120f24;
     --card: #1d1838;
     --text: #f1eeff;
     --muted: #a59fcc;
     --line: #2e2856;
     --shadow: 0 6px 20px rgba(0, 0, 0, .35);
+    --xp-bg: #3d2f10;
+    --xp-fg: #ffc964;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #120f24;
+  --card: #1d1838;
+  --text: #f1eeff;
+  --muted: #a59fcc;
+  --line: #2e2856;
+  --shadow: 0 6px 20px rgba(0, 0, 0, .35);
+  --xp-bg: #3d2f10;
+  --xp-fg: #ffc964;
 }
 
 * { box-sizing: border-box; }
@@ -119,8 +135,7 @@ main { max-width: 720px; margin: 0 auto; padding: 16px; }
   display: inline-block; font-size: .78rem; padding: 0 10px; border-radius: 999px;
   background: var(--line); color: var(--muted); margin-inline-end: 6px;
 }
-.tag.xp { background: #fff2d6; color: #a76800; }
-@media (prefers-color-scheme: dark) { .tag.xp { background: #3d2f10; color: #ffc964; } }
+.tag.xp { background: var(--xp-bg); color: var(--xp-fg); }
 
 .timer-ring { position: relative; width: 240px; height: 240px; margin: 10px auto; }
 .timer-ring svg { transform: rotate(-90deg); }
@@ -261,3 +276,26 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .stars { display: flex; justify-content: center; gap: 6px; margin: 6px 0 12px; direction: ltr; }
 .stars button { font-size: 2.2rem; background: none; border: 0; cursor: pointer; color: var(--line); line-height: 1; }
 .stars button.on { color: #ffb020; }
+
+/* تبديل الوضع */
+.theme-anim, .theme-anim *, .theme-anim *::before, .theme-anim *::after {
+  transition: background-color .35s ease, color .35s ease, border-color .35s ease, fill .35s ease, stroke .35s ease !important;
+}
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(255,255,255,.2); color: #fff; font-size: 1.15rem;
+  display: grid; place-items: center; flex: none;
+}
+.icon-btn:hover { background: rgba(255,255,255,.32); }
+.icon-btn:focus-visible, .seg button:focus-visible { outline: 3px solid #ffd166; outline-offset: 2px; }
+.icon-btn .ico { display: inline-block; transition: transform .4s ease; }
+.icon-btn:active .ico { transform: rotate(-30deg) scale(.85); }
+.top-stats { align-items: center; }
+
+.seg { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
+.seg button {
+  flex: 1; border: 0; background: transparent; padding: 10px 4px; border-radius: 10px; cursor: pointer;
+  font-weight: 700; color: var(--muted); min-height: 44px;
+}
+.seg button.sel { background: var(--card); color: var(--primary); box-shadow: var(--shadow); }
+@media (prefers-reduced-motion: reduce) { .icon-btn .ico { transition: none; } }

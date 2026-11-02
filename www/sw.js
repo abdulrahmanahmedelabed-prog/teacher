@@ -1,6 +1,6 @@
 /* Service Worker: يجعل التطبيق يعمل بدون إنترنت ومع النت الضعيف */
-const CACHE = "rehla-v2";
-const ASSETS = ["./", "index.html", "styles.css", "data.js", "app.js", "manifest.json", "icon.svg", "icon-192.png", "icon-512.png"];
+const CACHE = "rehla-v3";
+const ASSETS = ["./", "index.html", "styles.css", "data.js", "app.js", "theme.js", "manifest.json", "icon.svg", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

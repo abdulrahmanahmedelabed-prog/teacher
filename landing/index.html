@@ -3,7 +3,53 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#6c4cf5">
+  <meta name="theme-color" content="#6c4cf5" data-light="#f6f4ff" data-dark="#110e22">
+  <script>
+/* إدارة الوضع الفاتح/الداكن — يُحمَّل في <head> قبل الرسم لمنع الوميض.
+   التفضيل: "auto" (حسب الجهاز) | "light" | "dark" — مشترك بين التطبيق وصفحة الهبوط */
+(function () {
+  var KEY = "rehla-theme";
+  var root = document.documentElement;
+  var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  var rm = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  var animT;
+
+  function get() {
+    try { var v = localStorage.getItem(KEY); return v === "light" || v === "dark" ? v : "auto"; }
+    catch (e) { return "auto"; }
+  }
+  function effective(p) { return p === "auto" ? (mq && mq.matches ? "dark" : "light") : p; }
+
+  function apply(p, animate) {
+    if (animate && !(rm && rm.matches)) {
+      root.classList.add("theme-anim");
+      clearTimeout(animT);
+      animT = setTimeout(function () { root.classList.remove("theme-anim"); }, 450);
+    }
+    if (p === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", p);
+    var eff = effective(p);
+    root.style.colorScheme = eff;
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta && meta.dataset[eff]) meta.setAttribute("content", meta.dataset[eff]);
+    try { document.dispatchEvent(new CustomEvent("themechange", { detail: { pref: p, effective: eff } })); } catch (e) {}
+  }
+  function set(p) {
+    try { if (p === "auto") localStorage.removeItem(KEY); else localStorage.setItem(KEY, p); } catch (e) {}
+    apply(p, true);
+  }
+  function toggle() { set(effective(get()) === "dark" ? "light" : "dark"); }
+
+  if (mq) {
+    var onSys = function () { if (get() === "auto") apply("auto", true); };
+    if (mq.addEventListener) mq.addEventListener("change", onSys); else if (mq.addListener) mq.addListener(onSys);
+  }
+  // مزامنة بين تبويبات/صفحات مفتوحة
+  window.addEventListener("storage", function (e) { if (e.key === KEY) apply(get(), true); });
+
+  window.Theme = { get: get, set: set, toggle: toggle, effective: function () { return effective(get()); } };
+  apply(get(), false);
+})();
+  </script>
   <title>رحلة العودة — ارجع للدراسة خطوة بخطوة</title>
   <meta name="description" content="ابتعدت عن الدراسة ولا تعرف من أين تبدأ؟ رحلة العودة تطبيق مجاني يعيدك للدراسة بتحديات يومية صغيرة ونقاط ومستويات وألعاب، ويعمل بدون إنترنت.">
   <meta property="og:title" content="رحلة العودة — ارجع للدراسة خطوة بخطوة">
@@ -17,8 +63,13 @@
       --line: #e4e0fb; --shadow: 0 10px 30px rgba(60, 40, 160, .12);
     }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #110e22; --card: #1c1736; --text: #f1eeff; --muted: #a59fcc; --line: #2e2856; --shadow: 0 10px 30px rgba(0,0,0,.4); }
+      :root:not([data-theme="light"]) { --bg: #110e22; --card: #1c1736; --text: #f1eeff; --muted: #a59fcc; --line: #2e2856; --shadow: 0 10px 30px rgba(0,0,0,.4); }
     }
+    :root[data-theme="dark"] { --bg: #110e22; --card: #1c1736; --text: #f1eeff; --muted: #a59fcc; --line: #2e2856; --shadow: 0 10px 30px rgba(0,0,0,.4); }
+    .theme-anim, .theme-anim * { transition: background-color .35s ease, color .35s ease, border-color .35s ease !important; }
+    .theme-toggle { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; font-size: 1.15rem; display: grid; place-items: center; flex: none; }
+    .theme-toggle:hover { border-color: var(--primary); }
+    .theme-toggle:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body {
@@ -173,6 +224,7 @@
       <a href="#faq">أسئلة</a>
       <a href="#contact">تواصل</a>
       <a class="btn sm" href="app/">ابدأ الآن</a>
+      <button class="theme-toggle" id="themeBtn" type="button" aria-label="تبديل الوضع">🌙</button>
     </div>
   </div>
 </nav>
@@ -377,6 +429,19 @@
 </footer>
 
 <script>
+  // زر الوضع الفاتح/الداكن
+  (function () {
+    var b = document.getElementById("themeBtn");
+    function sync() {
+      var dark = Theme.effective() === "dark";
+      b.textContent = dark ? "☀️" : "🌙";
+      b.setAttribute("aria-label", dark ? "التبديل إلى الوضع الفاتح" : "التبديل إلى الوضع الداكن");
+      b.title = b.getAttribute("aria-label");
+    }
+    b.addEventListener("click", Theme.toggle);
+    document.addEventListener("themechange", sync);
+    sync();
+  })();
   // ظهور الأقسام عند التمرير
   (function () {
     var els = document.querySelectorAll(".reveal");
