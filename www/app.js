@@ -2009,10 +2009,12 @@
         '<div class="grid-2 tutor-actions">' +
         '<button class="btn ghost" data-action="aiMode" data-m="explain"' + (aiBusy ? " disabled" : "") + tr(">📖 اشرح لي</button>") +
         '<button class="btn ghost" data-action="aiMode" data-m="summary"' + (aiBusy ? " disabled" : "") + tr(">📝 لخّص</button>") +
-        '<button class="btn ghost" data-action="aiMode" data-m="quiz"' + (aiBusy ? " disabled" : "") + tr(">❓ اختبرني</button>") +
+        '<button class="btn ghost" data-action="quizLang"' + (aiBusy ? " disabled" : "") + tr(">❓ اختبرني</button>") +
         '<button class="btn ghost" data-action="aiMode" data-m="cards"' + (aiBusy ? " disabled" : "") + tr(">🗂️ اصنع بطاقات</button></div>") +
         (chat.length || aiBusy ? '<div class="chat-log" id="chatLog" aria-live="polite">' + chat.map(m =>
-          '<div class="bubble ' + (m.role === "user" ? "me" : "ai") + '" dir="auto">' + (m.role === "user" ? esc(m.text) : mdLite(m.text) + sayBtn(m.text)) + "</div>").join("") +
+          '<div class="bubble ' + (m.role === "user" ? "me" : "ai") + '" dir="auto">' + (m.role === "user" ? esc(m.text) : mdLite(m.text) + sayBtn(m.text) +
+            (/«بطاقاتي»|“My cards”/.test(m.text) ? '<button class="btn good sm" style="margin-top:8px" data-action="go" data-v="cards">' + tr("🗂️ افتح بطاقاتي وراجعها") + "</button>" : "") +
+            (m === chat[chat.length - 1] && !aiBusy && /[؟?]\s*\**\s*$/.test(m.text.trim()) ? '<button class="btn ghost sm" style="margin-top:8px" data-action="aiMode" data-m="model">' + tr("💡 لا أعرف — أرني الجواب النموذجي") + "</button>" : "")) + "</div>").join("") +
           (aiBusy ? '<div class="bubble ai typing">' + esc(aiStatus || tr("المعلم يكتب")) + ' <span class="dots-anim" aria-hidden="true"><i></i><i></i><i></i></span></div>' : "") + "</div>" : "") +
         '<div class="chat-input">' + micBtn("aiInput") + tr('<textarea id="aiInput" dir="auto" rows="1" maxlength="1500" placeholder="اسأل عن أي شيء في الكتاب…" aria-label="سؤالك للمعلم"></textarea>') +
         tr('<button class="btn" data-action="aiSend" aria-label="إرسال"') + (aiBusy ? " disabled" : "") + ">➤</button></div>" +
@@ -2036,6 +2038,9 @@
     const t = aiTarget();
     if (mode === "explain") return tr("اشرح لي ") + t + tr(" خطوة بخطوة بأسلوب بسيط، مع مثال من الحياة، ثم اسألني سؤالاً واحداً لأتأكد أني فهمت.");
     if (mode === "summary") return tr("لخّص لي ") + t + tr(" في نقاط قصيرة: الأفكار الرئيسية، والمصطلحات المهمة، وما يجب أن أحفظه.");
+    if (mode === "quizAr") return "اختبرني في " + t + ": اسألني بالعربية سؤالاً واحداً فقط في كل مرة، وانتظر إجابتي. بعد إجابتي: صحّحها بلطف، ثم اكتب «✅ الجواب النموذجي:» وتحته الجواب الكامل الصحيح كما يُكتب في الامتحان، ثم انتقل للسؤال التالي. ابدأ بالسؤال الأول.";
+    if (mode === "quizEn") return "Quiz me on " + t + " in English: ask me one question at a time and wait for my answer. After I answer: correct it kindly, then write \"✅ Model answer:\" followed by the complete correct answer as it should be written in an exam, then move to the next question. Start with the first question.";
+    if (mode === "model") return S.settings.lang === "en" ? "I don't know. Show me the ✅ model answer to this question, explain it simply, then ask me the next question." : "لا أعرف الجواب. أعطني «✅ الجواب النموذجي» لهذا السؤال، واشرحه باختصار، ثم اسألني السؤال التالي.";
     if (mode === "quiz") return tr("اختبرني في ") + t + tr(": اسألني سؤالاً واحداً فقط في كل مرة، وانتظر إجابتي، ثم صحّحها بلطف وانتقل للسؤال التالي. ابدأ بالسؤال الأول.");
     return tr("اصنع 8 بطاقات مراجعة (سؤال قصير وجوابه من الكتاب) من ") + t + ".";
   }
@@ -2118,7 +2123,12 @@
     try {
       let hist = chat.slice(-11);
       while (hist.length && hist[0].role !== "user") hist = hist.slice(1);
-      const r = await aiCall(b, "/chat", { deep: tutorDeep, messages: hist });
+      const r = await aiCall(b, "/chat", { deep: tutorDeep, messages: hist, onText: txt => {
+        const box = document.querySelector("#chatLog .bubble.typing");
+        if (box) { box.classList.remove("typing"); box.classList.add("streaming"); }
+        const el2 = document.querySelector("#chatLog .bubble.streaming");
+        if (el2) { el2.innerHTML = mdLite(txt); const log = $("#chatLog"); if (log) log.scrollTop = log.scrollHeight; }
+      } });
       chat.push({ role: "assistant", text: r.text || "…" });
       if (chat.length > 30) S.bookChats[b.id] = chat.slice(-30);
       fx("flip");
@@ -2143,7 +2153,8 @@
       const cards = (r.cards || []).filter(c => c.q && c.a);
       cards.forEach(c => S.cards.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), subject: b.subject || (S.profile.subjects[0] || "عام"), q: c.q, a: c.a, box: 1, due: today() }));
       const chat = S.bookChats[b.id] = S.bookChats[b.id] || [];
-      chat.push({ role: "user", text: prompt }, { role: "assistant", text: cards.length ? tr("✔ أضفت **") + cards.length + tr(" بطاقة** إلى «بطاقاتي». راجعها الآن لتثبت المعلومة 🗂️") : tr("لم أستطع صنع بطاقات من هذا الجزء. جرّب تحديد الدرس أو الصفحات.") });
+      const nC = cards.length, word = S.settings.lang === "en" ? "" : (nC === 1 ? "بطاقة واحدة" : nC === 2 ? "بطاقتين" : nC <= 10 ? nC + " بطاقات" : nC + " بطاقة");
+      chat.push({ role: "user", text: prompt }, { role: "assistant", text: nC ? (S.settings.lang === "en" ? tr("✔ أضفت **") + nC + tr(" بطاقة** إلى «بطاقاتي». راجعها الآن لتثبت المعلومة 🗂️") : "✔ أضفت **" + word + "** إلى «بطاقاتي». راجعها الآن لتثبت المعلومة 🗂️") : tr("لم أستطع صنع بطاقات من هذا الجزء. جرّب تحديد الدرس أو الصفحات.") });
       if (cards.length) { fx("complete"); aiReward(); checkBadges(); }
     } catch (e) { if (e && (e.code === "ai_limit" || e.code === "daily_limit")) { aiBusy = false; aiLimitReached(); return; } toast(aiErrorText(e)); }
     finally { aiBusy = false; aiStatus = ""; save(); render(); }
@@ -2623,7 +2634,14 @@
         }, true);
         break;
       }
+      case "quizLang": {
+        const l = $("#tutorLesson"); if (l) tutorLesson = l.value;
+        showModal("❓", tr("اختبرني"), tr("بأي لغة تريد الأسئلة؟ بعد كل إجابة يعطيك المعلم الجواب النموذجي ✅"),
+          '<div class="stack"><button class="btn block" data-action="aiMode" data-m="quizAr">🇵🇸 عربي</button><button class="btn block" data-action="aiMode" data-m="quizEn">🇬🇧 English</button><button class="btn ghost block" data-action="closeModal">' + tr("إلغاء") + "</button></div>");
+        break;
+      }
       case "aiMode": {
+        closeModal();
         const b = S.books.find(x => x.id === openBookId);
         if (!b) return;
         const l = $("#tutorLesson"); if (l) tutorLesson = l.value;

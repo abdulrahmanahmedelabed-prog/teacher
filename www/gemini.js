@@ -55,12 +55,29 @@
     if (e && e.code === "fetch-error") return { code: "network", status: 0 };
     return { code: "upstream", status: st || 0 };
   }
-  async function run(names, request, generationConfig) {
+  // onText: يعرض الجواب كلمة كلمة أثناء كتابته (البث) فيبدأ الطالب القراءة بعد ثانية بدل الانتظار
+  async function once(name, request, generationConfig, onText) {
+    const m = model(name, generationConfig);
+    if (onText && m.generateContentStream) {
+      const r = await m.generateContentStream(request);
+      let acc = "";
+      for await (const ch of r.stream) { const c0 = ch && ch.candidates && ch.candidates[0]; const t = ((c0 && c0.content && c0.content.parts) || []).filter(x => typeof x.text === "string" && !x.thought).map(x => x.text).join(""); if (t) { acc += t; try { onText(acc); } catch (e) {} } }
+      return r.response;
+    }
+    return (await m.generateContent(request)).response;
+  }
+  async function run(names, request, generationConfig, onText) {
     let lastErr = null;
     for (const name of names) {
       try {
-        const r = await model(name, generationConfig).generateContent(request);
-        return r.response;
+        try { return await once(name, request, generationConfig, onText); }
+        catch (e) {
+          // بعض النماذج لا تقبل مستوى التفكير المطلوب → نعيد مرة بدون إعداد التفكير
+          const st = e && e.customErrorData && e.customErrorData.status;
+          if (st !== 400 || !generationConfig.thinkingConfig) throw e;
+          const g = Object.assign({}, generationConfig); delete g.thinkingConfig;
+          return await once(name, request, g, onText);
+        }
       } catch (e) {
         lastErr = mapErr(e);
         // «شرح أعمق» مشغول أو حصته انتهت → نكمل بالنموذج السريع بدل أن نترك الطالب
@@ -81,6 +98,8 @@
   const fastName = () => opt().model || "gemini-3.5-flash-lite";
   const deepName = () => opt().deepModel || "gemini-3.8-flash";
   const low = { thinkingConfig: { thinkingLevel: "LOW" } };
+  // للأسئلة العادية واستخراج الدرس: أقل تفكير = أسرع رد. «شرح أعمق» فقط يفكّر أكثر.
+  const quick = { thinkingConfig: { thinkingLevel: "MINIMAL" } };
 
   /* (1) مرة واحدة لكل درس: نرسل الكتاب ونستخرج نص الدرس، فتصبح كل الأسئلة بعدها نصاً خفيفاً */
   async function extractLesson(blob, mime, lesson) {
@@ -92,7 +111,7 @@
       " كما هو قدر الإمكان (العناوين، الشرح، الأمثلة، التمارين)، حتى 4000 كلمة، دون تعليق منك. إذا كان صورة فانسخ ما تقرؤه فيها.";
     try {
       const resp = await run([fastName()], { contents: [{ role: "user", parts: [{ inlineData: { mimeType: mime, data } }, { text: ask }] }] },
-        Object.assign({ maxOutputTokens: 8000 }, low));
+        Object.assign({ maxOutputTokens: 8000 }, quick));
       const t = textOf(resp);
       if (!t) fail("bad_file", 422);
       return clip(t, 24000);
@@ -111,7 +130,7 @@
   }
   async function chat(p) {
     const names = p.deep ? [deepName(), fastName()] : [fastName()];
-    const resp = await run(names, { contents: contentsOf(p) }, Object.assign({ maxOutputTokens: 1500 }, low));
+    const resp = await run(names, { contents: contentsOf(p) }, Object.assign({ maxOutputTokens: 1500 }, p.deep ? low : quick), typeof p.onText === "function" ? p.onText : null);
     const t = textOf(resp);
     const refuse = p.lang === "en" ? "I can't help with this request. Try asking about another part of the lesson 🙂" : "لا أستطيع المساعدة في هذا الطلب. جرّب أن تسأل عن جزء آخر من الدرس 🙂";
     return { text: t === null ? refuse : (t || "…") };
@@ -120,7 +139,7 @@
     const S = window.FirebaseAI.Schema;
     const schema = S.object({ properties: { cards: S.array({ items: S.object({ properties: { q: S.string(), a: S.string() } }) }) } });
     const resp = await run([fastName()], { contents: contentsOf(p) },
-      Object.assign({ maxOutputTokens: 3000, responseMimeType: "application/json", responseSchema: schema }, low));
+      Object.assign({ maxOutputTokens: 3000, responseMimeType: "application/json", responseSchema: schema }, quick));
     let list = [];
     try { list = JSON.parse(textOf(resp) || "{}").cards || []; } catch (e) { list = []; }
     return { cards: list.filter(c => c && c.q && c.a).slice(0, 15).map(c => ({ q: clip(c.q, 300), a: clip(c.a, 500) })) };
