@@ -1,0 +1,58 @@
+# يبني نسخة Flutter من «رحلة العودة» (flutter_app/) ويختبرها، ثم ينشر ملف APK
+# في صفحة الإصدارات برابط ثابت (الوسم flutter-latest).
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flutter-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Install packages
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build release APK (debug-signed so it installs directly)
+        run: flutter build apk --release
+      - name: Rename APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk ../rehla-flutter.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rehla-flutter-apk
+          path: rehla-flutter.apk
+      - name: Publish to Releases (flutter-latest)
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete flutter-latest --yes --cleanup-tag || true
+          gh release create flutter-latest rehla-flutter.apk \
+            --target "$GITHUB_SHA" \
+            --title "رحلة العودة — Flutter" \
+            --notes "نسخة Flutter الأصلية من «رحلة العودة». ثبّت الملف rehla-flutter.apk على موبايلك (قد تحتاج تفعيل «التثبيت من مصادر غير معروفة»). بُني من الكومت $GITHUB_SHA."
