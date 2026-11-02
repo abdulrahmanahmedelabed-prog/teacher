@@ -127,7 +127,7 @@ const MEMORY_EMOJIS = ["📐", "🧪", "🌍", "📖", "🔭", "🧬", "💡", "
    هذه القيم عامة بطبيعتها ويمكن نشرها بأمان (لا يوجد هنا أي مفتاح Gemini):
    Firebase يحفظ مفتاح Gemini عند Google، وApp Check (reCAPTCHA v3) يضمن أن الطلبات من تطبيقنا فقط.
    خطوات الإعداد: docs/firebase-setup.md */
-const FIREBASE_CONFIG = null; // الصق هنا كائن firebaseConfig من إعدادات مشروع Firebase
+const FIREBASE_CONFIG = { apiKey: "AIzaSyDTxqM0_KZB6Jnx0NgymFik-B5XF8NGLqI", authDomain: "rehla-alawda.firebaseapp.com", projectId: "rehla-alawda", storageBucket: "rehla-alawda.firebasestorage.app", messagingSenderId: "370591624316", appId: "1:370591624316:web:e201cda844b837b4fcadf9" }; // عامة بطبيعتها — الحماية من App Check
 const AI_CONFIG = {
   proxyUrl: "",
   recaptchaSiteKey: "",                 // مفتاح الموقع (Site key) من reCAPTCHA v3
