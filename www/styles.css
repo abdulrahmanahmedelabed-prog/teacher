@@ -566,3 +566,4 @@ body.young .challenge .ch-text { font-size: 1.1rem; }
 /* Claude المجاني */
 .claude-steps { padding-inline-start: 20px; margin: 8px 0 12px; line-height: 1.9; }
 .claude-rest { background: var(--bg); border-radius: var(--r-md); padding: 16px; margin-bottom: 12px; }
+.claude-rest .empty-emoji { text-align: center; }
