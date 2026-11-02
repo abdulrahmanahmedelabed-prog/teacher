@@ -27,7 +27,11 @@
     settings: { sound: true, volume: 0.6, haptics: true, quiet: true, ambient: false },
     books: [],              // كتبي: [{id, title, subject, kind:"file"|"link", mime, size, url, fileId, added}]
     bookChats: {},          // محادثات المعلم الذكي لكل كتاب: {id: [{role, text}]}
-    deviceId: ""
+    deviceId: "",
+    // التذكيرات (مطفأة حتى يوافق الطالب) — حسب تصميم الوكيل التربوي
+    reminders: { on: false, time: "", lead: 10, days: [0, 1, 2, 3, 4, 6], miss: true, showName: false, shared: false,
+      pausedUntil: "", asks: 0, askedOn: "", onSince: "", reduced: false, helpfulAsked: false, lastPlan: [] },
+    notif: { scheduled: 0, tapped: 0, ignored: 0, pauses: 0, disables: 0, helpful: null }
   };
 
   function load() {
@@ -89,6 +93,18 @@
       st.bookChats[k] = arr(st.bookChats[k]).filter(m => m && (m.role === "user" || m.role === "assistant")).map(m => ({ role: m.role, text: str(m.text).slice(0, 6000) })).slice(-30);
     });
     st.deviceId = /^[A-Za-z0-9]{8,40}$/.test(str(st.deviceId)) ? st.deviceId : "";
+    const r0 = st.reminders && typeof st.reminders === "object" ? st.reminders : {};
+    st.reminders = {
+      on: r0.on === true, time: /^\d{2}:\d{2}$/.test(str(r0.time)) ? r0.time : "", lead: [0, 10, 15, 30].includes(r0.lead) ? r0.lead : 10,
+      days: arr(r0.days).filter(d => Number.isInteger(d) && d >= 0 && d <= 6).length ? arr(r0.days).filter(d => Number.isInteger(d) && d >= 0 && d <= 6) : [0, 1, 2, 3, 4, 6],
+      miss: r0.miss !== false, showName: r0.showName === true, shared: r0.shared === true,
+      pausedUntil: dateOk(r0.pausedUntil) ? r0.pausedUntil : "", asks: Math.min(2, Math.max(0, num(r0.asks))), askedOn: dateOk(r0.askedOn) ? r0.askedOn : "",
+      onSince: dateOk(r0.onSince) ? r0.onSince : "", reduced: r0.reduced === true, helpfulAsked: r0.helpfulAsked === true,
+      lastPlan: arr(r0.lastPlan).filter(x => x && typeof x.at === "number").slice(0, 12)
+    };
+    const n0 = st.notif && typeof st.notif === "object" ? st.notif : {};
+    st.notif = { scheduled: num(n0.scheduled), tapped: num(n0.tapped), ignored: num(n0.ignored), pauses: num(n0.pauses), disables: num(n0.disables), helpful: n0.helpful === true || n0.helpful === false ? n0.helpful : null };
+    if (st.profile && st.profile.g !== "m" && st.profile.g !== "f") delete st.profile.g;
     st.daily = null; // يُعاد توليد تحديات اليوم
     if (st.timer && !(st.timer.end > 0 && st.timer.minutes > 0)) st.timer = null;
     return st;
@@ -503,9 +519,8 @@
     const L = notifPlugin();
     if (!L) return;
     try {
-      let p = await L.checkPermissions();
-      if (p.display !== "granted") p = await L.requestPermissions();
-      if (p.display !== "granted") return;
+      const p = await L.checkPermissions();
+      if (p.display !== "granted") return; // نطلب الإذن فقط من بطاقة التذكير اللطيفة
       await L.schedule({ notifications: [{ id: 7001, title: "رحلة العودة", body: "أحسنت! انتهت جلستك 🌟", schedule: { at: new Date(end), allowWhileIdle: true } }] });
     } catch (e) { /* بدون إشعار */ }
   }
@@ -741,11 +756,13 @@
       MOOD_ORDER.map(i => { const m = MOODS[i]; return '<button data-action="mood" data-i="' + i + '" class="' + (rec.mood === i ? "sel" : "") + '" title="' + m.label + '" aria-label="' + m.label + '" aria-pressed="' + (rec.mood === i) + '">' + m.e + "</button>"; }).join("") +
       "</div>" + (rec.mood !== null && MOODS[rec.mood] ? '<p class="mood-msg">' + MOODS[rec.mood].msg + "</p>" : "") +
       (rec.rest ? '<p class="mood-msg">🌿 اليوم يوم راحة — الراحة جزء من الرحلة. نراك غداً 💜</p>' : "") +
+      (low && S.reminders.on && !(S.reminders.pausedUntil >= today()) ? '<button class="linkbtn" data-action="remPause">⏸️ أوقف التذكيرات أسبوعاً</button>' : "") +
       (lowStreak() >= 3 ? '<p class="mood-msg care">💜 لاحظنا أن الأيام الأخيرة صعبة عليك. تحدّث مع شخص تثق به — أحد أفراد أسرتك أو معلم أو مرشد المدرسة. لست وحدك.</p>' : "") +
       "</section>" +
 
       nextCard +
       (bigLost ? '<button class="btn accent big block" data-action="lost">🧭 تايه؟ من وين أبدأ</button>' : "") +
+      reminderAskCard(st) + reminderHelpfulCard() +
 
       (weeklyReady ? '<section class="card weekly-ready center"><b>🏅 أكملت تحدي الأسبوع!</b><p class="small muted">' + wk.text + '</p><button class="btn good block" data-action="claimWeekly">استلم 150 ⭐</button></section>' : "") +
 
@@ -1110,6 +1127,8 @@
       SUBJECTS.map(s => '<button type="button" class="chip' + (onboardSel.includes(s) ? " sel" : "") + '" data-action="obSubject" data-s="' + esc(s) + '">' + esc(s) + "</button>").join("") + "</div>" +
       '<label for="obMinutes">الوقت اليومي (دقيقة)</label><select id="obMinutes">' +
       [20, 30, 45, 60, 90, 120].map(m => '<option value="' + m + '"' + (m === p.minutes ? " selected" : "") + ">" + m + "</option>").join("") + "</select>" +
+      "<label>أخاطبك بصيغة</label><div class=\"chips\" style=\"justify-content:flex-start\">" +
+      [["m", "المذكّر (صديقي)"], ["f", "المؤنث (صديقتي)"]].map(g => '<button type="button" class="chip' + (p.g === g[0] ? " sel" : "") + '" data-action="setG" data-g="' + g[0] + '" aria-pressed="' + (p.g === g[0]) + '">' + g[1] + "</button>").join("") + "</div>" +
       '<label for="obGoal">هدفي</label><input type="text" id="obGoal" maxlength="80" value="' + esc(p.goal) + '">' +
       "<label>موعد دراستي</label><div class=\"chips\">" +
       ["بعد الفجر", "بعد الإفطار", "بعد العصر", "بعد المغرب", "قبل النوم"].map(w => '<button type="button" class="chip' + (p.when === w ? " sel" : "") + '" data-action="obWhen" data-w="' + w + '">' + w + "</button>").join("") + "</div>" +
@@ -1119,6 +1138,7 @@
       [["auto", "🌓 تلقائي"], ["light", "☀️ فاتح"], ["dark", "🌙 داكن"]].map(t =>
         '<button role="radio" aria-checked="' + (Theme.get() === t[0]) + '" class="' + (Theme.get() === t[0] ? "sel" : "") + '" data-action="setTheme" data-t="' + t[0] + '">' + t[1] + "</button>").join("") +
       "</div></div>" +
+      remindersCard() +
       soundCard() +
       '<div class="card"><h3>💾 نسخة احتياطية</h3><p class="small muted">بياناتك محفوظة على جهازك فقط. انسخها احتياطياً لتنقلها لجهاز آخر.</p>' +
       '<div class="grid-2"><button class="btn ghost" data-action="export">⬆️ تصدير</button>' +
@@ -1248,6 +1268,7 @@
       "التقييم: " + (fbDraft.rating ? "★".repeat(fbDraft.rating) + "☆".repeat(5 - fbDraft.rating) + " (" + fbDraft.rating + "/5)" : "بدون") + "\n" +
       "النوع: " + fbDraft.kind + "\n\n" + text + "\n\n" +
       "— معلومات (بدون بيانات شخصية):\n" +
+      "التذكيرات: " + (S.reminders.on ? "مفعّلة" : "مطفأة") + " · فُتحت من إشعار: " + S.notif.tapped + " · إيقاف مؤقت: " + S.notif.pauses + (S.notif.helpful === null ? "" : " · مفيدة: " + (S.notif.helpful ? "نعم" : "لا")) + "\n" +
       "المرحلة الدراسية: " + S.profile.grade + (S.profile.cls ? " — " + classLabel(S.profile.cls) : "") + "\nالمستوى في التطبيق: " + lv.level + "\nأيام الاستخدام: " + st.activeDays + "\nالمرحلة: " + st.stageObj.name;
     fbDraft = { rating: 0, kind: "اقتراح" };
     if (firstThisWeek) addXP(10, "شكراً على رأيك"); else { markActive(); save(); }
@@ -1391,6 +1412,241 @@
     save();
     checkBadges();
     render();
+  }
+
+  /* ---------- التذكيرات ورسائل «اشتقنا لك» ---------- */
+  const WHEN_TIME = { "بعد الفجر": "07:00", "بعد الإفطار": "09:00", "بعد العصر": "16:00", "بعد المغرب": "18:30", "قبل النوم": "20:30" };
+  const DAY_NAMES = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const MISS_OFFSETS = [2, 4, 7, 14, 30], MISS_REDUCED = [2, 7, 30];
+  const remindTime = () => S.reminders.time || WHEN_TIME[S.profile && S.profile.when] || "17:00";
+  const whenLabel = () => (S.profile && S.profile.when) || remindTime();
+  // لا إشعارات بين 21:30 و07:00
+  function clampQuiet(d) {
+    const m = d.getHours() * 60 + d.getMinutes();
+    if (m > 21 * 60 + 30) d.setHours(21, 30, 0, 0);
+    if (m < 7 * 60) d.setHours(7, 0, 0, 0);
+    return d;
+  }
+  function slotOn(dayOffset, lead) {
+    const [h, mi] = remindTime().split(":").map(Number);
+    const d = addDays(new Date(), dayOffset);
+    d.setHours(h, mi, 0, 0);
+    d.setMinutes(d.getMinutes() - (lead || 0));
+    return clampQuiet(d);
+  }
+  // الأنثى/الذكر: صيغة المخاطبة
+  function gtext(t) {
+    if (!S.profile || S.profile.g !== "f") return t;
+    return t.replace(/يا صديقي/g, "يا صديقتي").replace(/مستعداً/g, "مستعدة").replace(/عُد متى/g, "عودي متى")
+      .replace(/ابدأ /g, "ابدئي ").replace(/تظن/g, "تظنين").replace(/أنت على/g, "أنتِ على")
+      .replace(/حين تجد /g, "حين تجدين ").replace(/متى عدت/g, "متى عدتِ").replace(/حين تريد/g, "حين تريدين").replace(/سمح وقتك/g, "سمح وقتكِ");
+  }
+  function reminderCopy(dayOffset) {
+    const st = stats(), cls = studentClass(), due = dueCards().length;
+    const next = STAGES[st.stage];
+    const toStage = next ? next.minDays - st.activeDays : 99;
+    const rec = dayRec();
+    const lowToday = rec.rest || LOW_MOODS.includes(rec.mood) || lowStreak() >= 3;
+    if (lowToday && dayOffset >= 1) return ["💜 يوم جديد", "كيف حالك اليوم؟ ابدأ بما تستطيع، ولو بنَفَس عميق وصفحة واحدة."];
+    if (cls <= 4) return ["🐣 وقت المرح", "لعبة أرقام صغيرة ثم صفحة واحدة… خمس دقائق ممتعة!"];
+    if (due >= 3) return ["🗂️ بطاقاتك جاهزة", arCount2(due, "بطاقات", "بطاقة") + " تنتظر المراجعة، دقيقتان فقط لتثبيتها."];
+    if (Object.values(S.bookChats || {}).some(c => c.length) && dayNumber(today()) % 3 === 0) return ["📖 نكمل القراءة؟", "الكتاب الذي بدأته ينتظرك عند آخر صفحة وصلت إليها."];
+    if (next && toStage > 0 && toStage <= 3) return ["🌟 اقتربت من «" + next.name + "»", "باقي " + arDays(toStage) + " دراسة فقط. جلسة قصيرة اليوم تقرّبك أكثر."];
+    if (st.freezes > 0 && dayOffset >= 1) return ["🧊 يوم السماح معك", "سلسلتك محفوظة. وإن سمح وقتك، خطوة صغيرة اليوم تكفي."];
+    return (dayNumber(today()) + dayOffset) % 2 ? ["⏰ قرب موعدك", "بعد قليل وقت دراستك " + whenLabel() + ". خمس دقائق تكفي للبداية 🌱"]
+      : ["رحلة العودة", "تحدّي اليوم صغير وجاهز، والبداية أسهل مما تظن ✨"];
+  }
+  const arCount2 = (n, few, many) => n + " " + (n >= 3 && n <= 10 ? few : many);
+  function missCopy(off) {
+    const st = stats(), next = STAGES[st.stage], toStage = next ? next.minDays - st.activeDays : 99;
+    if (off === 2) {
+      if (st.freezes > 0) return ["🧊 يوم سماح لك", "سلسلتك محفوظة بيوم سماح. عُد متى استطعت، نحن بانتظارك."];
+      if (next && toStage <= 3) return ["باقي القليل 🌟", "أنت على بُعد " + arDays(toStage) + " من «" + next.name + "». نكمل بخطوة صغيرة؟"];
+      return ["وينك يا صديقي؟ 🌿", "مكانك محفوظ وتقدّمك كله باقٍ. خمس دقائق تكفي لنكمل معاً."];
+    }
+    if (off === 4) return ["نفكّر فيك 💜", "نعرف أن بعض الأيام ثقيلة. حين تجد لحظة هدوء، نحن هنا."];
+    if (off === 7) return ["خطوة واحدة فقط", "لا حاجة لتعويض ما فات. نبدأ من جديد بخطوة صغيرة، كأول يوم ✨"];
+    if (off === 14) return ["رحلتك بانتظارك", "كل تقدّمك محفوظ، وسنبدأ معك بهدوء متى عدت 🌱"];
+    return ["سنبقى هنا 💜", "لن نُكثر عليك التذكير. حين تريد العودة، افتح التطبيق وستجدنا."];
+  }
+  // خطة الإشعارات القادمة (تُعاد في كل فتح للتطبيق، فأي فتح يصفّر سلسلة «اشتقنا لك»)
+  function planNotifications() {
+    const R = S.reminders;
+    if (!R.on || !S.profile) return [];
+    const now = Date.now(), plan = [];
+    const paused = d => R.pausedUntil && dateKey(d) <= R.pausedUntil;
+    const allowed = d => R.days.includes(d.getDay()) && !paused(d);
+    const named = t => R.showName && !R.shared ? S.profile.name + "، " + t : t;
+    const push = (id, at, copy, kind) => { if (at.getTime() > now + 60000) plan.push({ id, at: at.getTime(), title: named(gtext(copy[0])), body: gtext(copy[1]), kind }); };
+    const t0 = slotOn(0, R.lead);
+    if (!isActive(today()) && allowed(t0)) push(7100, t0, reminderCopy(0), "remind");
+    const t1 = slotOn(1, R.lead);
+    if (allowed(t1)) push(7101, t1, isActive(today()) ? reminderCopy(1) : ["رحلة العودة", "اشتقنا لك! تحدّي اليوم صغير وجاهز متى كنت مستعداً 🌱"], "remind");
+    if (R.miss) {
+      const safety = lowStreak() >= 3; // أيام صعبة: لا رسائل اشتياق لأسبوع
+      const offs = (R.reduced || S.notif.pauses >= 2 || S.notif.ignored >= 3) ? MISS_REDUCED : MISS_OFFSETS;
+      offs.forEach(off => {
+        if (safety && off <= 7) return;
+        let d = slotOn(off, 0), k = 0;
+        while (!allowed(d) && k++ < 7) d = slotOn(off + k, 0);
+        if (allowed(d)) push(7100 + off, d, missCopy(off), "miss");
+      });
+    }
+    return plan;
+  }
+
+  function notifPluginRaw() { return isNative() && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }
+  let nativeNotifReady = false;
+  async function nativeNotifSetup(L) {
+    if (nativeNotifReady) return;
+    nativeNotifReady = true;
+    // قناة خاصة: شاشة القفل تُظهر «رحلة العودة» فقط
+    try { await L.createChannel({ id: "reminders", name: "تذكيرات الدراسة", importance: 3, visibility: 0, vibration: true }); } catch (e) {}
+    try { await L.registerActionTypes({ types: [{ id: "REMIND", actions: [{ id: "start5", title: "ابدأ 5 دقائق", foreground: true }, { id: "later", title: "ذكّرني بعد ساعة" }] }] }); } catch (e) {}
+    try { L.addListener("localNotificationActionPerformed", a => onNotifAction(a && a.actionId)); } catch (e) {}
+  }
+  function onNotifAction(actionId) {
+    S.notif.tapped++;
+    S.notif.ignored = 0;
+    S.notif.lastTap = Date.now();
+    save();
+    if (actionId === "start5") { closeModal(); startTimer(5, (S.profile && S.profile.subjects[0]) || "عام"); }
+    else if (actionId === "later") {
+      const at = new Date(Date.now() + 3600000);
+      if (at.getHours() * 60 + at.getMinutes() <= 21 * 60 + 30) {
+        const L = notifPluginRaw();
+        if (L) L.schedule({ notifications: [{ id: 7299, title: "⏰ قرب موعدك", body: gtext("خمس دقائق تكفي للبداية 🌱"), schedule: { at, allowWhileIdle: true }, channelId: "reminders", actionTypeId: "REMIND" }] }).catch(() => {});
+      }
+    }
+  }
+  // يُستدعى عند كل فتح/عودة للتطبيق وبعد أي تغيير في الإعدادات
+  async function syncReminders() {
+    if (!S.profile) return;
+    const R = S.reminders, now = Date.now();
+    // قياس محلي بدون تتبّع: كم إشعاراً مرّ دون أن يُفتح التطبيق منه
+    const fired = R.lastPlan.filter(p => p.at < now).length;
+    if (fired && !(S.notif.lastTap && now - S.notif.lastTap < 600000)) S.notif.ignored += fired;
+    const plan = planNotifications();
+    R.lastPlan = plan.map(p => ({ id: p.id, at: p.at }));
+    S.notif.scheduled += plan.length;
+    save();
+    const L = notifPluginRaw();
+    if (L) {
+      try {
+        await nativeNotifSetup(L);
+        const pend = await L.getPending();
+        const old = (pend.notifications || []).filter(n => n.id >= 7100 && n.id < 7300).map(n => ({ id: n.id }));
+        if (old.length) await L.cancel({ notifications: old });
+        if (plan.length) await L.schedule({ notifications: plan.map(p => ({ id: p.id, title: p.title, body: p.body, schedule: { at: new Date(p.at), allowWhileIdle: true }, channelId: "reminders", actionTypeId: "REMIND", extra: { kind: p.kind } })) });
+      } catch (e) { /* لا شيء */ }
+      return;
+    }
+    // الويب: محاولة أفضل-جهد عبر Service Worker (قد لا تعمل دائماً)
+    metaPut("plan", { items: plan, shown: [] }).catch(() => {});
+    try {
+      const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+      if (reg && reg.periodicSync && R.on) {
+        const ps = await navigator.permissions.query({ name: "periodic-background-sync" }).catch(() => null);
+        if (ps && ps.state === "granted") await reg.periodicSync.register("rehla-remind", { minInterval: 6 * 3600 * 1000 });
+      }
+    } catch (e) {}
+  }
+  function metaPut(k, v) {
+    return new Promise((res, rej) => {
+      if (!window.indexedDB) { rej(new Error("no-idb")); return; }
+      const r = indexedDB.open("rehla-meta", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onerror = () => rej(r.error);
+      r.onsuccess = () => { const t = r.result.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); };
+    });
+  }
+  // الويب والتطبيق مفتوح في الخلفية: نُظهر الإشعار المستحق
+  setInterval(async () => {
+    if (isNative() || !S.reminders.on || !document.hidden || !("Notification" in window) || Notification.permission !== "granted") return;
+    const due = S.reminders.lastPlan.find(p => p.at <= Date.now() && Date.now() - p.at < 3600000 && !p.shown);
+    if (!due) return;
+    const full = planNotifications().find(p => p.id === due.id) || { title: "رحلة العودة", body: gtext("خمس دقائق تكفي للبداية 🌱") };
+    due.shown = true; save();
+    try {
+      const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+      if (reg) reg.showNotification(full.title, { body: full.body, tag: "rehla-remind", icon: "icon-192.png" });
+      else new Notification(full.title, { body: full.body, tag: "rehla-remind", icon: "icon-192.png" });
+    } catch (e) {}
+  }, 60000);
+
+  async function askNotifPermission() {
+    const L = notifPluginRaw();
+    if (L) {
+      try { let p = await L.checkPermissions(); if (p.display !== "granted") p = await L.requestPermissions(); return p.display === "granted"; }
+      catch (e) { return false; }
+    }
+    if (!("Notification" in window)) return false;
+    if (Notification.permission === "granted") return true;
+    try { return (await Notification.requestPermission()) === "granted"; } catch (e) { return false; }
+  }
+  async function enableReminders() {
+    const ok = await askNotifPermission();
+    const R = S.reminders;
+    R.asks = Math.max(R.asks, 1); R.askedOn = today();
+    if (!ok) {
+      R.asks = 2; // لا نسأل مرة ثالثة بعد الرفض
+      save(); render();
+      toast(isNative() ? "حسناً، لن نرسل تذكيرات 💜" : "لم يُسمح بالإشعارات. يمكنك إضافة التذكير لتقويمك من الإعدادات 📅");
+      return;
+    }
+    R.on = true; if (!R.onSince) R.onSince = today();
+    save(); render();
+    syncReminders();
+    toast("🔔 سنذكّرك بلطف قبل موعدك");
+  }
+  // بطاقة السؤال اللطيف: بعد أول تحدٍّ، ومرة ثانية بعد 14 يوماً على الأكثر
+  function reminderAskCard(st) {
+    const R = S.reminders;
+    if (R.on || R.asks >= 2 || st.totalChallenges < 1) return "";
+    if (R.asks === 1 && R.askedOn && dayNumber(today()) - dayNumber(R.askedOn) < 14) return "";
+    if (!isNative() && !("Notification" in window)) return "";
+    const kid = studentClass() <= 3;
+    return '<section class="card soft-ask"><b>🔔 هل تريد أن نذكّرك قبل موعدك (' + esc(whenLabel()) + ")؟</b>" +
+      '<p class="small muted">تذكير لطيف واحد في اليوم فقط، ويمكنك إيقافه متى شئت.' + (kid ? " يمكن لأحد والديك ضبط الوقت معك." : "") + "</p>" +
+      '<div class="grid-2"><button class="btn" data-action="remindYes">نعم، ذكّرني</button><button class="btn ghost" data-action="remindNo">ليس الآن</button></div></section>';
+  }
+  function reminderHelpfulCard() {
+    const R = S.reminders;
+    if (!R.on || R.helpfulAsked || !R.onSince || dayNumber(today()) - dayNumber(R.onSince) < 14) return "";
+    return '<section class="card soft-ask center"><b>هل التذكيرات مفيدة لك؟</b><div class="grid-2" style="margin-top:10px">' +
+      '<button class="btn ghost" data-action="remindHelpful" data-v="1">👍 نعم</button><button class="btn ghost" data-action="remindHelpful" data-v="0">👎 ليس كثيراً</button></div></section>';
+  }
+  function remindersCard() {
+    const R = S.reminders, paused = R.pausedUntil && R.pausedUntil >= today();
+    const sw = (k, label, hint) => '<button type="button" class="switch-row" data-action="remPref" data-k="' + k + '" role="switch" aria-checked="' + !!R[k] + '">' +
+      '<span class="grow"><b>' + label + "</b>" + (hint ? '<span class="small muted">' + hint + "</span>" : "") + '</span><span class="switch" aria-hidden="true"></span></button>';
+    let h = '<div class="card"><h3>🔔 التذكيرات</h3>' + sw("on", "تذكير بموعد الدراسة", "مرة واحدة في اليوم، لا إشعارات بعد 9:30 مساءً");
+    if (R.on) {
+      h += (paused ? '<p class="small care-note">⏸️ التذكيرات متوقفة حتى ' + esc(R.pausedUntil) + ' <button class="linkbtn" style="display:inline;margin:0" data-action="remResume">استئناف</button></p>' : "") +
+        '<label for="remTime">وقت الدراسة</label><input type="time" id="remTime" value="' + remindTime() + '" min="07:00" max="21:30">' +
+        '<div class="field-label" style="margin-top:10px">ذكّرني قبله بـ</div><div class="chips" style="justify-content:flex-start">' +
+        [0, 10, 15, 30].map(m => '<button class="chip' + (R.lead === m ? " sel" : "") + '" data-action="remLead" data-m="' + m + '" aria-pressed="' + (R.lead === m) + '">' + (m ? m + " د" : "في الموعد") + "</button>").join("") + "</div>" +
+        '<div class="field-label" style="margin-top:10px">الأيام</div><div class="chips" style="justify-content:flex-start">' +
+        [6, 0, 1, 2, 3, 4, 5].map(d => '<button class="chip' + (R.days.includes(d) ? " sel" : "") + '" data-action="remDay" data-d="' + d + '" aria-pressed="' + R.days.includes(d) + '">' + DAY_NAMES[d] + "</button>").join("") + "</div>" +
+        sw("miss", "رسائل «اشتقنا لك»", "إذا غبت: بعد يومين، 4، 7، 14، 30 يوماً ثم نتوقف") +
+        sw("shared", "هاتف مشترك مع العائلة", "لا نُظهر اسمك في الإشعارات") +
+        (R.shared ? "" : sw("showName", "أظهر اسمي في الإشعارات", "")) +
+        (paused ? "" : '<button class="btn ghost block" data-action="remPause">⏸️ أوقف التذكيرات أسبوعاً</button>');
+    }
+    h += (!isNative() ? '<div class="stack"><button class="btn ghost block" data-action="remIcs">📅 أضف التذكير لتقويم هاتفك</button>' +
+      '<p class="small muted">في المتصفح قد لا تصل الإشعارات دائماً. التقويم يذكّرك حتى بدون إنترنت، وتطبيق Android يذكّرك دائماً.</p></div>' : "") + "</div>";
+    return h;
+  }
+  // ملف تقويم .ics: يعمل مع تطبيق التقويم بدون إنترنت
+  function remindersIcs() {
+    const R = S.reminders, [h, m] = remindTime().split(":");
+    const byday = (R.days.length ? R.days : [0, 1, 2, 3, 4, 6]).map(d => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][d]).join(",");
+    const d = new Date(), ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+    return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//rehla//ar", "BEGIN:VEVENT",
+      "UID:rehla-" + Date.now() + "@rehla", "DTSTAMP:" + ymd + "T000000", "DTSTART:" + ymd + "T" + h + m + "00",
+      "DURATION:PT15M", "RRULE:FREQ=WEEKLY;BYDAY=" + byday, "SUMMARY:📚 وقت الدراسة — رحلة العودة",
+      "DESCRIPTION:خمس دقائق تكفي للبداية 🌱", "BEGIN:VALARM", "TRIGGER:-PT" + (R.lead || 10) + "M", "ACTION:DISPLAY",
+      "DESCRIPTION:قرب موعد دراستك", "END:VALARM", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
   }
 
   /* ---------- كتبي + المعلم الذكي ---------- */
@@ -1845,6 +2101,7 @@
         S.profile.minutes = +$("#obMinutes").value;
         S.profile.goal = $("#obGoal").value.trim();
         { const w = document.querySelector('[data-action="obWhen"].sel'); S.profile.when = w ? w.dataset.w : ""; }
+        syncReminders();
         if (S.daily && !S.daily.list.some(c => c.done)) buildDaily(S.daily.rerolls);
         save();
         toast("تم الحفظ ✔");
@@ -1976,6 +2233,38 @@
       case "grade": if (el.dataset.ok === "1") fx("right"); gradeCard(el.dataset.ok === "1"); break;
       case "endReview": review = null; render(); break;
       case "share": shareProgress(); break;
+      case "remindYes": enableReminders(); break;
+      case "remindNo": S.reminders.asks = Math.min(2, S.reminders.asks + 1); S.reminders.askedOn = today(); save(); render(); break;
+      case "remindHelpful":
+        S.reminders.helpfulAsked = true; S.notif.helpful = el.dataset.v === "1";
+        if (!S.notif.helpful) { S.reminders.reduced = true; toast("خففنا التذكيرات. يمكنك إيقافها من الإعدادات"); } else toast("شكراً لك 💜");
+        save(); render(); syncReminders(); break;
+      case "remPref": {
+        const k = el.dataset.k, R = S.reminders;
+        if (k === "on" && !R.on) { enableReminders(); break; }
+        R[k] = !R[k];
+        if (k === "on" && !R.on) S.notif.disables++;
+        if (k === "shared" && R.shared) R.showName = false;
+        save(); render(); syncReminders(); break;
+      }
+      case "remLead": S.reminders.lead = +el.dataset.m; save(); render(); syncReminders(); break;
+      case "remDay": {
+        const d = +el.dataset.d, days = S.reminders.days, i = days.indexOf(d);
+        if (i >= 0) { if (days.length > 1) days.splice(i, 1); } else days.push(d);
+        save(); render(); syncReminders(); break;
+      }
+      case "remPause": S.reminders.pausedUntil = dateKey(addDays(new Date(), 7)); S.notif.pauses++; save(); render(); syncReminders(); toast("⏸️ أوقفنا التذكيرات أسبوعاً. خذ وقتك 💜"); break;
+      case "remResume": S.reminders.pausedUntil = ""; save(); render(); syncReminders(); break;
+      case "remIcs": {
+        const ics = remindersIcs();
+        if (isNative()) { nativeShareFile("rehla-reminder.ics", ics, false, "تذكير الدراسة"); break; }
+        const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+        const a2 = document.createElement("a"); a2.href = url; a2.download = "rehla-reminder.ics";
+        document.body.appendChild(a2); a2.click(); a2.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+        toast("📅 افتح الملف لإضافته لتقويمك");
+        break;
+      }
+      case "setG": S.profile.g = S.profile.g === el.dataset.g ? undefined : el.dataset.g; save(); render(); break;
       case "studyTab": studyTab = el.dataset.t; openBookId = null; review = null; view = studyTab; render(); break;
       case "addBookFile": { const f = $("#bookFile"); if (f) f.click(); break; }
       case "addBookLink": bookForm = true; render(); setTimeout(() => { const u = $("#bkUrl"); if (u) u.focus(); }, 30); break;
@@ -2138,6 +2427,11 @@
     if (e.target && e.target.id === "volRange") { const v = $("#volVal"); if (v) v.textContent = e.target.value + "٪"; }
   });
   document.addEventListener("change", e => {
+    if (e.target && e.target.id === "remTime" && /^\d{2}:\d{2}$/.test(e.target.value)) {
+      let v = e.target.value; if (v < "07:00") v = "07:00"; if (v > "21:30") v = "21:30";
+      S.reminders.time = v; save(); syncReminders(); if (v !== e.target.value) { e.target.value = v; toast("لا تذكيرات قبل 7 صباحاً أو بعد 9:30 مساءً"); }
+      return;
+    }
     if (e.target && e.target.id === "bookFile") { const f = e.target.files && e.target.files[0]; e.target.value = ""; addBookFromFile(f); return; }
     if (e.target && e.target.id === "volRange") { S.settings.volume = (+e.target.value || 0) / 100; save(); fx("right"); return; }
     if (e.target.id !== "importFile" || !e.target.files[0]) return;
@@ -2161,6 +2455,7 @@
   // عند العودة للتطبيق: حدّث اليوم والمؤقت
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
+    syncReminders();
     if (S.timer && S.timer.end <= Date.now()) finishTimer();
     else if (S.timer && !S.timer.muted && window.Sound) Sound.startAmbient();
     else if (S.profile && S.daily && S.daily.date !== today()) render();
@@ -2194,6 +2489,7 @@
 
   /* ================= التشغيل ================= */
   render();
+  setTimeout(syncReminders, 500);
   if (S.timer) {
     if (S.timer.end <= Date.now()) finishTimer(); else ensureTimerLoop();
   }

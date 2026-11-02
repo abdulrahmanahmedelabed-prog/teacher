@@ -1,7 +1,7 @@
 /* Service Worker: يعمل بدون إنترنت ومع النت الضعيف.
    كل ملفات الإصدار الواحد تُخزَّن معاً (لا خلط بين إصدارين)،
    والإصدار الجديد يُفعَّل عندما يضغط المستخدم «حدّث الآن». */
-const CACHE = "rehla-v7";
+const CACHE = "rehla-v8";
 const ASSETS = ["./", "index.html", "styles.css", "theme.js", "data.js", "sound.js", "app.js", "manifest.json",
   "icon.svg", "icon-192.png"]; // الأيقونات الكبيرة تُخزَّن عند أول طلب لتخفيف أول تحميل
 
@@ -29,4 +29,34 @@ self.addEventListener("fetch", e => {
       return res;
     }))
   );
+});
+
+/* تذكيرات الويب (أفضل جهد): يقرأ الخطة التي كتبها التطبيق ويُظهر المستحق منها */
+function metaDb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("rehla-meta", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function showDueReminder() {
+  const db = await metaDb();
+  const plan = await new Promise(res => { const g = db.transaction("kv").objectStore("kv").get("plan"); g.onsuccess = () => res(g.result); g.onerror = () => res(null); });
+  if (!plan || !Array.isArray(plan.items)) return;
+  const now = Date.now(), h = new Date().getHours() * 60 + new Date().getMinutes();
+  if (h > 21 * 60 + 30 || h < 7 * 60) return;
+  const due = plan.items.filter(p => p.at <= now && now - p.at < 12 * 3600000 && !(plan.shown || []).includes(p.id)).pop();
+  if (!due) return;
+  await self.registration.showNotification(due.title, { body: due.body, tag: "rehla-remind", icon: "icon-192.png" });
+  plan.shown = (plan.shown || []).concat(plan.items.filter(p => p.at <= now).map(p => p.id));
+  await new Promise(res => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").put(plan, "plan"); t.oncomplete = res; t.onerror = res; });
+}
+self.addEventListener("periodicsync", e => { if (e.tag === "rehla-remind") e.waitUntil(showDueReminder().catch(() => {})); });
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window" }).then(list => {
+    const c = list.find(x => "focus" in x);
+    return c ? c.focus() : self.clients.openWindow("./");
+  }));
 });

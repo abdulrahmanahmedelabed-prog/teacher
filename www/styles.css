@@ -533,3 +533,8 @@ input[type=range] { width: 100%; accent-color: var(--primary); min-height: 36px;
 .chat-input .btn { width: 52px; flex: none; font-size: 1.2rem; transform: scaleX(-1); }
 .care-note { color: var(--text); background: var(--bg); padding: 8px 12px; border-radius: var(--r-sm); }
 .grid-2 > .btn, .grid-3 > .btn { padding-inline: 8px; white-space: nowrap; }
+
+/* التذكيرات */
+.soft-ask { border: 2px dashed var(--line); }
+.soft-ask b { display: block; margin-bottom: 4px; }
+input[type=time] { width: 100%; padding: 10px 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); color: var(--text); font: inherit; direction: ltr; }
