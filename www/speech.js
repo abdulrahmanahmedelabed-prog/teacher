@@ -8,47 +8,104 @@
   const isNative = () => !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
   const plugin = n => isNative() && window.Capacitor.Plugins && window.Capacitor.Plugins[n];
 
-  /* ---------- القراءة بصوت ---------- */
-  let arVoice = null, ttsOk = false;
-  const listeners = [];
-  // نحذف الرموز التعبيرية والعلامات قبل النطق
+  /* ---------- القراءة بصوت ----------
+     أصوات: امرأة / رجل / طفلة / طفل. نفضّل الأصوات «الطبيعية» (Natural/Neural/Online/Google) لأنها أقرب للإنسان،
+     ونقرأ جملة جملة مع وقفات قصيرة حتى لا يبدو الكلام آلياً. */
+  const VOICE_STYLE = {
+    woman: { g: "f", pitch: 1.0, rate: 0.95 },
+    man: { g: "m", pitch: 0.92, rate: 0.93 },
+    girl: { g: "f", pitch: 1.3, rate: 0.97 },
+    boy: { g: "m", pitch: 1.22, rate: 0.97 }
+  };
+  const FEMALE = /female|woman|zariyah|salma|amina|hoda|laila|layla|mouna|rana|sana|fatima|noura|dalia|amany|zeina|reem|sara|hala|iman|\bf\d?\b|-a$|x-ard-|arc-|ar-xa-x-ard/i;
+  const MALE = /\bmale\b|\bman\b|hamed|shakir|naayf|tarik|bassel|omar|hamdan|fahed|ali\b|moaz|rami|saleh|taim|\bm\d?\b|ar-xa-x-arz|x-are-/i;
+  const NATURAL = /natural|neural|online|enhanced|premium|wavenet|google/i;
+  let arVoices = [], ttsOk = false, speaking = false, queue = [], style = "woman", nativeVoices = [];
+  const listeners = [], speakListeners = [];
   function clean(t) {
     return String(t || "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, " ")
       .replace(/[«»*_#•→←✔✖]/g, " ").replace(/\s+/g, " ").trim();
   }
   function setOk(v) { if (v !== ttsOk) { ttsOk = v; listeners.forEach(f => { try { f(); } catch (e) {} }); } }
+  function setSpeaking(v) { if (v !== speaking) { speaking = v; speakListeners.forEach(f => { try { f(v); } catch (e) {} }); } }
+  const genderOf = v => { const n = (v.name || "") + " " + (v.voiceURI || v.identifier || ""); return FEMALE.test(n) && !MALE.test(n) ? "f" : MALE.test(n) ? "m" : ""; };
+  function score(v, g) {
+    let sc = 0;
+    if (NATURAL.test(v.name || "")) sc += 4;
+    if (/^ar[-_]?(PS|JO|LB|SY)/i.test(v.lang)) sc += 2; else if (/^ar[-_]?(SA|EG|AE)/i.test(v.lang)) sc += 1;
+    const vg = genderOf(v);
+    if (vg === g) sc += 6; else if (vg && vg !== g) sc -= 3;
+    if (v.localService === false) sc += 1; // أصوات الإنترنت عادة أكثر طبيعية
+    return sc;
+  }
+  function pickVoice() {
+    const g = (VOICE_STYLE[style] || VOICE_STYLE.woman).g;
+    return arVoices.slice().sort((a, b) => score(b, g) - score(a, g))[0] || null;
+  }
+  // هل يوجد صوت حقيقي بهذا الجنس؟ (وإلا نغيّر طبقة الصوت فقط)
+  const hasGender = g => arVoices.some(v => genderOf(v) === g);
   function initTTS() {
     const T = plugin("TextToSpeech");
     if (T) {
       T.getSupportedLanguages().then(r => setOk((r.languages || []).some(l => /^ar/i.test(l)))).catch(() => setOk(true));
+      if (T.getSupportedVoices) T.getSupportedVoices().then(r => { nativeVoices = (r.voices || []).map((v, i) => Object.assign({ i }, v)).filter(v => /^ar/i.test(v.lang || "")); }).catch(() => {});
       return;
     }
     if (!("speechSynthesis" in window)) return;
     const pick = () => {
       const vs = speechSynthesis.getVoices() || [];
-      arVoice = vs.find(v => /^ar[-_]?(PS|JO)/i.test(v.lang)) || vs.find(v => /^ar/i.test(v.lang)) || null;
-      setOk(!!arVoice);
+      arVoices = vs.filter(v => /^ar/i.test(v.lang));
+      setOk(arVoices.length > 0);
     };
     pick();
     try { speechSynthesis.addEventListener("voiceschanged", pick); } catch (e) { speechSynthesis.onvoiceschanged = pick; }
+  }
+  // نقسم النص إلى جمل قصيرة: وقفات طبيعية بدل سيل متواصل من الكلمات
+  function sentences(t) {
+    return t.split(/(?<=[.!؟?،:\n])\s+/).map(x => x.trim()).filter(Boolean).reduce((acc, x) => {
+      if (acc.length && (acc[acc.length - 1].length + x.length) < 60) acc[acc.length - 1] += " " + x; else acc.push(x);
+      return acc;
+    }, []);
   }
   function speak(text, opts) {
     opts = opts || {};
     const t = clean(text);
     if (!t || !ttsOk) return false;
     stopSpeak();
-    const rate = opts.young ? 0.85 : 0.95, pitch = opts.young ? 1.05 : 1, volume = opts.volume == null ? 1 : opts.volume;
+    const st = VOICE_STYLE[opts.voice || style] || VOICE_STYLE.woman;
+    const volume = opts.volume == null ? 1 : opts.volume;
     const T = plugin("TextToSpeech");
-    if (T) { T.speak({ text: t, lang: "ar", rate, pitch, volume, category: "ambient" }).catch(() => {}); return true; }
-    try {
-      const u = new SpeechSynthesisUtterance(t);
-      u.voice = arVoice; u.lang = arVoice.lang; u.rate = rate; u.pitch = pitch; u.volume = volume;
-      speechSynthesis.speak(u);
+    if (T) {
+      const nv = nativeVoices.slice().sort((a, b) => score(b, st.g) - score(a, st.g))[0];
+      const pitch = nv && genderOf(nv) === st.g ? st.pitch : st.pitch * (st.g === "m" ? 0.85 : 1.08);
+      setSpeaking(true);
+      T.speak(Object.assign({ text: t, lang: "ar", rate: st.rate, pitch, volume, category: "ambient" }, nv ? { voice: nv.i } : {}))
+        .catch(() => {}).finally(() => setSpeaking(false));
       return true;
-    } catch (e) { return false; }
+    }
+    try {
+      const v = pickVoice();
+      // لا يوجد صوت رجل/امرأة حقيقي؟ نقرّب الطبقة قليلاً (باعتدال حتى لا يصبح الصوت مضحكاً)
+      const pitch = v && genderOf(v) === st.g ? st.pitch : Math.max(0.6, Math.min(1.6, st.pitch * (st.g === "m" ? (hasGender("m") ? 1 : 0.8) : (hasGender("f") ? 1 : 1.12))));
+      queue = sentences(t);
+      const next = () => {
+        if (!queue.length) { setSpeaking(false); return; }
+        const u = new SpeechSynthesisUtterance(queue.shift());
+        if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "ar";
+        u.rate = st.rate; u.pitch = pitch; u.volume = volume;
+        u.onend = () => setTimeout(next, 180);
+        u.onerror = () => { queue = []; setSpeaking(false); };
+        speechSynthesis.speak(u);
+      };
+      setSpeaking(true);
+      next();
+      return true;
+    } catch (e) { setSpeaking(false); return false; }
   }
   function stopSpeak() {
+    queue = [];
     try { const T = plugin("TextToSpeech"); if (T) T.stop().catch(() => {}); else if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {}
+    setSpeaking(false);
   }
 
   /* ---------- الإملاء الصوتي ---------- */
@@ -130,6 +187,7 @@
 
   window.Speech = {
     init: initTTS, speak, stop: stopSpeak, canSpeak: () => ttsOk, onReady: f => listeners.push(f),
+    setVoice: v => { if (VOICE_STYLE[v]) style = v; }, isSpeaking: () => speaking, onSpeaking: f => speakListeners.push(f),
     canListen, listen, stopListening: () => finish(), isListening: () => !!active,
     canRecord, startRecording, stopRecording, isRecording
   };

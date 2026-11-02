@@ -25,7 +25,7 @@
     weeklyClaimed: {},
     timer: null,            // {end, minutes, subject}
     settings: { sound: true, volume: 0.6, haptics: true, quiet: true, ambient: false,
-      young: false, readAloud: false, voiceIn: true, together: false, stt: "", simple: false },
+      young: false, readAloud: false, voice: "woman", voiceIn: true, together: false, stt: "", simple: false },
     books: [],              // كتبي: [{id, title, subject, kind:"file"|"link", mime, size, url, fileId, added}]
     bookChats: {},          // محادثات المعلم الذكي لكل كتاب: {id: [{role, text}]}
     deviceId: "",
@@ -86,7 +86,7 @@
     st.settings = {
       sound: set0.sound !== false, volume: Math.min(1, Math.max(0, typeof set0.volume === "number" ? set0.volume : defSet.volume)),
       haptics: set0.haptics !== false, quiet: set0.quiet !== false, ambient: set0.ambient === true,
-      young: set0.young === true, readAloud: set0.readAloud === true, voiceIn: set0.voiceIn !== false,
+      young: set0.young === true, readAloud: set0.readAloud === true, voice: ["woman", "man", "girl", "boy"].includes(set0.voice) ? set0.voice : "woman", voiceIn: set0.voiceIn !== false,
       together: set0.together === true, stt: set0.stt === "cloud" || set0.stt === "local" ? set0.stt : "", simple: set0.simple === true
     };
     if (st.profile && st.profile.cls != null) st.profile.cls = Math.min(13, Math.max(1, Math.round(num(st.profile.cls)) || 0)) || undefined;
@@ -492,7 +492,7 @@
   }
   /* ---------- القراءة بصوت والإملاء الصوتي (speech.js) ---------- */
   const SP = () => window.Speech;
-  const wantsRead = () => !!(S.settings && (S.settings.young || S.settings.readAloud));
+  const wantsRead = () => !!(S.settings && S.settings.readAloud);
   // زر «اسمعني» يظهر فقط إذا وُجد صوت عربي على الجهاز (لا أزرار معطّلة)
   function sayBtn(text) {
     if (!SP() || !SP().canSpeak() || !text) return "";
@@ -505,7 +505,8 @@
   function sayNow(text) {
     if (!SP()) return false;
     const vol = S.settings.quiet && (new Date().getHours() >= 22 || new Date().getHours() < 7) ? 0.5 : 1;
-    return SP().speak(text, { young: !!S.settings.young, volume: vol });
+    SP().setVoice && SP().setVoice(S.settings.voice || "woman");
+    return SP().speak(text, { volume: vol });
   }
   // قراءة تلقائية مرة واحدة لكل شاشة، فقط إذا اختار الطالب ذلك والصوت مفعّل
   let lastAuto = "";
@@ -1362,7 +1363,11 @@
       '<span class="grow"><b>' + label + "</b>" + (hint ? '<span class="small muted">' + hint + "</span>" : "") + '</span><span class="switch" aria-hidden="true"></span></button>';
     const noVoice = SP() && !SP().canSpeak();
     return '<div class="card"><h3>🗣️ القراءة والكلام</h3>' +
-      sw("readAloud", "🔊 اقرأ لي بصوت", "يقرأ التعليمات والأسئلة تلقائياً") +
+      sw("readAloud", "🔊 اقرأ لي بصوت", st.readAloud ? "يقرأ التعليمات تلقائياً — اضغط هنا لإيقافه" : "مطفأ: يقرأ فقط عندما تضغط 🔊") +
+      (!noVoice ? '<p class="small muted" style="margin:10px 0 6px">صوت القارئ</p><div class="voice-pick" role="radiogroup" aria-label="صوت القارئ">' +
+        [["woman", "👩", "امرأة"], ["man", "👨", "رجل"], ["girl", "👧", "طفلة"], ["boy", "👦", "طفل"]].map(v =>
+          '<button type="button" role="radio" aria-checked="' + ((st.voice || "woman") === v[0]) + '" class="' + ((st.voice || "woman") === v[0] ? "sel" : "") + '" data-action="setVoice" data-v="' + v[0] + '"><span aria-hidden="true">' + v[1] + "</span>" + v[2] + "</button>").join("") +
+        '</div><p class="small muted">💡 لصوت أكثر طبيعية على Android: الإعدادات ← تحويل النص إلى كلام ← محرّك Google ← نزّل «العربية» بجودة عالية.</p>' : "") +
       (noVoice ? '<p class="small care-note">لا يوجد صوت عربي على هذا الجهاز. لتفعيله: الإعدادات ← اللغة ← تحويل النص إلى كلام ← نزّل العربية.</p>' : "") +
       sw("voiceIn", "🎤 تحدّث بدل الكتابة", st.stt === "local" ? "مضبوط على: التسجيل على الجهاز فقط" : "زر ميكروفون بجانب خانات الكتابة") +
       (st.stt ? '<button class="linkbtn" style="margin:0 0 8px" data-action="sttReset">تغيير موافقة الميكروفون</button>' : "") +
@@ -2477,7 +2482,9 @@
         showModal("🗣️", "كن أنت المعلّم", "اختر فكرة واحدة من درسك، واشرحها بصوت عالٍ لشخص تخيّله أمامك — أو لأحد من عائلتك. عندما تتوقف عند كلمة لا تفهمها، اكتبها في بطاقة جديدة لتسأل عنها غداً.",
           '<div class="stack"><button class="btn block" data-action="focusFor" data-m="10" data-s="' + esc((S.profile.subjects[0]) || "عام") + '">⏱️ ابدأ 10 دقائق</button><button class="btn ghost block" data-action="closeModal">لاحقاً</button></div>');
         break;
-      case "say": if (SP()) { SP().stop(); sayNow(el.dataset.t); } break;
+      case "say": if (SP()) { if (SP().isSpeaking && SP().isSpeaking()) { SP().stop(); break; } sayNow(el.dataset.t); } break;
+      case "stopSpeak": if (SP()) SP().stop(); break;
+      case "setVoice": S.settings.voice = el.dataset.v; save(); render(); if (SP()) { SP().stop(); sayNow({ woman: "مرحباً، أنا صوت القارئة", man: "مرحباً، أنا صوت القارئ", girl: "مرحباً! أنا صديقتك، سأقرأ معك", boy: "مرحباً! أنا صديقك، سأقرأ معك" }[el.dataset.v]); } break;
       case "mic": startMic(el.dataset.target); break;
       case "micCloud": case "micLocal": {
         S.settings.stt = a === "micCloud" ? "cloud" : "local"; save(); closeModal();
@@ -2786,7 +2793,18 @@
   syncThemeUI();
 
   if (window.Sound) Sound.init(() => S.settings);
-  if (SP()) { SP().init(); SP().onReady(() => { if (S.profile) render(); else renderOnboarding(); }); }
+  if (SP()) {
+    SP().init(); SP().onReady(() => { if (S.profile) render(); else renderOnboarding(); });
+    // زر «أوقف القراءة» يظهر فقط أثناء الكلام
+    if (SP().onSpeaking) {
+      const stopB = document.createElement("button");
+      stopB.type = "button"; stopB.className = "stop-speak hidden"; stopB.dataset.action = "stopSpeak";
+      stopB.innerHTML = '<span aria-hidden="true">⏹</span> أوقف القراءة'; stopB.setAttribute("aria-label", "أوقف القراءة");
+      document.body.appendChild(stopB);
+      stopB.addEventListener("click", () => SP().stop());
+      SP().onSpeaking(on => stopB.classList.toggle("hidden", !on));
+    }
+  }
   window.addEventListener("online", () => { if (view === "books") render(); });
   window.addEventListener("offline", () => { if (view === "books") render(); });
 

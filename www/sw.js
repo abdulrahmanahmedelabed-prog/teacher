@@ -1,7 +1,7 @@
 /* Service Worker: يعمل بدون إنترنت ومع النت الضعيف.
    كل ملفات الإصدار الواحد تُخزَّن معاً (لا خلط بين إصدارين)،
    والإصدار الجديد يُفعَّل عندما يضغط المستخدم «حدّث الآن». */
-const CACHE = "rehla-v13";
+const CACHE = "rehla-v14";
 const ASSETS = ["./", "index.html", "styles.css", "theme.js", "data.js", "sound.js", "speech.js", "vendor-firebase-ai.js", "gemini.js", "app.js", "manifest.json",
   "icon.svg", "icon-192.png"]; // الأيقونات الكبيرة تُخزَّن عند أول طلب لتخفيف أول تحميل
 

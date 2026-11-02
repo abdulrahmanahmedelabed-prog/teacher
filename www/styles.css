@@ -567,3 +567,14 @@ body.young .challenge .ch-text { font-size: 1.1rem; }
 .claude-steps { padding-inline-start: 20px; margin: 8px 0 12px; line-height: 1.9; }
 .claude-rest { background: var(--bg); border-radius: var(--r-md); padding: 16px; margin-bottom: 12px; }
 .claude-rest .empty-emoji { text-align: center; }
+
+/* زر إيقاف القراءة + اختيار الصوت */
+.stop-speak { position: fixed; inset-inline: 0; margin: 0 auto; bottom: calc(84px + env(safe-area-inset-bottom)); width: max-content; z-index: 60;
+  border: 0; border-radius: 999px; padding: 12px 20px; min-height: 48px; font: inherit; font-weight: 700; cursor: pointer;
+  background: var(--text, #222); color: var(--bg, #fff); box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+.stop-speak.hidden { display: none; }
+.voice-pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
+.voice-pick button { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 64px; border-radius: 14px; cursor: pointer; font: inherit;
+  border: 2px solid var(--line); background: transparent; color: inherit; }
+.voice-pick button span { font-size: 1.5rem; }
+.voice-pick button.sel { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); font-weight: 700; }
